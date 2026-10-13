@@ -152,11 +152,6 @@ function App() {
             <div><strong>Safe by design</strong><p>Demo mode · No external actions</p></div>
             <span className="safe-dot" />
           </div>
-          <div className="profile">
-            <div className="profile-avatar">JD</div>
-            <div className="profile-copy"><strong>Jordan Davis</strong><small>Workspace admin</small></div>
-            <Settings2 size={16} className="profile-settings" />
-          </div>
         </div>
       </aside>
 
@@ -168,7 +163,6 @@ function App() {
             <button className="icon-button notification-button" aria-label="Activity notifications">
               <Activity size={17} /><span className="notification-dot" />
             </button>
-            <div className="top-avatar">JD</div>
           </div>
         </header>
 

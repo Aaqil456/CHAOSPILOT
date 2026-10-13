@@ -87,15 +87,13 @@
   font-weight: 650;
 }
 
-.workspace-copy,
-.profile-copy {
+.workspace-copy {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
 
-.workspace-copy strong,
-.profile-copy strong {
+.workspace-copy strong {
   overflow: hidden;
   color: #dcdbe6;
   font-size: 11.5px;
@@ -104,8 +102,7 @@
   white-space: nowrap;
 }
 
-.workspace-copy small,
-.profile-copy small {
+.workspace-copy small {
   color: var(--muted-dim);
   font-size: 10.5px;
 }
@@ -236,34 +233,6 @@
   background: #74d6a7;
 }
 
-.profile {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 4px 0;
-  border-top: 1px solid #22232a;
-}
-
-.profile-avatar,
-.top-avatar {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid #4c3f4b;
-  border-radius: 50%;
-  color: #eed3c3;
-  background: linear-gradient(145deg, #644858, #333044);
-  font-size: 9px;
-  font-weight: 650;
-}
-
-.profile-settings {
-  margin-left: auto;
-  color: #737584;
-}
-
 .main-shell {
   width: calc(100% - 236px);
   min-width: 0;
@@ -359,11 +328,6 @@
   border: 1px solid #0b0c10;
   border-radius: 50%;
   background: #ac97ff;
-}
-
-.top-avatar {
-  width: 28px;
-  height: 28px;
 }
 
 .page-content {
@@ -1839,9 +1803,7 @@
   .workspace-switcher,
   .sidebar-label,
   .nav-item > span,
-  .sidebar-bottom .safe-card,
-  .profile-copy,
-  .profile-settings {
+  .sidebar-bottom .safe-card {
     display: none;
   }
 
@@ -1861,12 +1823,6 @@
 
   .sidebar-bottom {
     width: 100%;
-  }
-
-  .profile {
-    justify-content: center;
-    padding-right: 0;
-    padding-left: 0;
   }
 
   .main-shell {
@@ -1909,11 +1865,6 @@
   .demo-badge {
     padding: 5px 6px;
     font-size: 6px;
-  }
-
-  .top-avatar {
-    width: 25px;
-    height: 25px;
   }
 
   .page-content {
