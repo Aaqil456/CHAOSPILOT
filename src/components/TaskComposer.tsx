@@ -5,6 +5,7 @@ type TaskComposerProps = {
   task: string
   businesses: Business[]
   isBusy: boolean
+  hasRun: boolean
   formError: string
   onTaskChange: (task: string) => void
   onBusinessChange: (id: string, updates: Partial<Business>) => void
@@ -18,6 +19,7 @@ export function TaskComposer({
   task,
   businesses,
   isBusy,
+  hasRun,
   formError,
   onTaskChange,
   onBusinessChange,
@@ -36,9 +38,9 @@ export function TaskComposer({
       <div className="section-heading">
         <div className="section-title-wrap">
           <span className="section-icon composer-icon"><Rocket size={15} /></span>
-          <div><h2 id="composer-title">Create a mission</h2><p>Tell your agent what to accomplish</p></div>
+          <div><h2 id="composer-title">Your task</h2><p>Describe what you want to accomplish</p></div>
         </div>
-        <span className="sample-label"><span /> SAMPLE TASK</span>
+        <span className="sample-label"><span /> DEMO PREVIEW</span>
       </div>
 
       <form className="composer-form" onSubmit={submit}>
@@ -51,7 +53,7 @@ export function TaskComposer({
             onChange={(event) => onTaskChange(event.target.value)}
             rows={3}
             disabled={isBusy}
-            placeholder="Describe what you'd like the agent to do..."
+            placeholder="What would you like to accomplish?"
           />
           <span className="task-input-hint">Be specific for better results</span>
         </div>
@@ -103,16 +105,16 @@ export function TaskComposer({
 
         {formError && <div className="form-error" role="alert"><CircleAlert size={15} />{formError}</div>}
         <div className="composer-actions">
-          <div className="privacy-note"><span className="privacy-icon"><Globe2 size={13} /></span><span>Public websites only <span className="note-separator">·</span> No changes made to sites</span></div>
+          <div className="privacy-note"><span className="privacy-icon"><Globe2 size={13} /></span><span>Public HTTP(S) URLs <span className="note-separator">·</span> Demo makes no site requests</span></div>
           {isBusy ? (
             <button type="button" className="cancel-button" onClick={onCancel}><span className="cancel-square" /> Cancel run</button>
           ) : (
             <button type="submit" className="start-button">
-              <Rocket size={15} /> Start mission <span className="button-arrow">↗</span>
+              <Rocket size={15} /> {hasRun ? 'Start another task' : 'Start demo task'} <span className="button-arrow">↗</span>
             </button>
           )}
         </div>
-        <div className="demo-error-hint">Tip: add “simulate error” to the task to preview a failed run.</div>
+        <div className="demo-error-hint">Demo only: no sites are fetched. Enter “simulate error” to preview a failure.</div>
       </form>
     </section>
   )

@@ -19,6 +19,5 @@ export type ExecutionStep = {
   id: string
   title: string
   description: string
-  tool: string
   output: string
 }

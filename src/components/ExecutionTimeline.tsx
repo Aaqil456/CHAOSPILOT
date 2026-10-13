@@ -19,9 +19,9 @@ export function ExecutionTimeline({ status, completedSteps, failedStepIndex, bus
       <div className="section-heading">
         <div className="section-title-wrap">
           <span className="section-icon timeline-icon"><ActivityMark /></span>
-          <div><h2 id="timeline-title">Execution timeline</h2><p>Every step, out in the open</p></div>
+          <div><h2 id="timeline-title">Demo timeline</h2><p>Simulated progress · no external tools called</p></div>
         </div>
-        {hasStarted && <span className={`timeline-run-pill ${status === 'running' ? 'timeline-live' : ''}`}><span />{status === 'running' ? 'LIVE RUN' : status === 'completed' ? 'RUN COMPLETE' : status === 'error' ? 'RUN FAILED' : 'RUN CANCELLED'}</span>}
+        {hasStarted && <span className={`timeline-run-pill ${status === 'running' ? 'timeline-live' : ''}`}><span />{status === 'running' ? 'SIMULATING' : status === 'completed' ? 'COMPLETE' : status === 'error' ? 'FAILED' : 'CANCELLED'}</span>}
       </div>
       {!hasStarted ? (
         <div className="timeline-empty">
@@ -38,11 +38,9 @@ export function ExecutionTimeline({ status, completedSteps, failedStepIndex, bus
             const pending = !failed && !complete && !running
             const StepIcon = stepIcons[index]
             const stepStatus = failed ? 'failed' : complete ? 'completed' : running ? 'running' : 'pending'
-            const output = index === 1
-              ? `${businesses.length} ${businesses.length === 1 ? 'website' : 'websites'} reviewed · Key pages and messaging captured`
-              : index === 0
-                ? `${executionSteps[0].output.split('·')[0]}· ${businesses.length} ${businesses.length === 1 ? 'business' : 'businesses'} in scope`
-                : step.output
+            const output = index === 0
+              ? `Demo only · ${businesses.length} ${businesses.length === 1 ? 'business' : 'businesses'} entered · no AI request made`
+              : step.output
 
             return (
               <div className={`timeline-step step-${stepStatus}`} key={step.id}>
@@ -64,13 +62,12 @@ export function ExecutionTimeline({ status, completedSteps, failedStepIndex, bus
                   {(complete || running || failed) && (
                     <div className={`activity-card ${failed ? 'activity-failed' : ''}`}>
                       <div className="activity-card-head">
-                        <span className="tool-mark"><span className="tool-mark-dot" /> TOOL CALL</span>
-                        <span className="tool-name">{step.tool}</span>
+                        <span className="tool-mark"><span className="tool-mark-dot" /> SIMULATED STEP</span>
                         {complete && <span className="tool-ok"><Check size={11} /> OK</span>}
                         {running && <span className="tool-running"><span /> RUNNING</span>}
                         {failed && <span className="tool-error"><CircleAlert size={11} /> ERROR</span>}
                       </div>
-                      <div className="activity-output"><span className="output-chevron">›</span>{failed ? 'Could not connect to the requested website. Check that the URL is reachable.' : output}</div>
+                      <div className="activity-output"><span className="output-chevron">›</span>{failed ? 'Simulated failure only · no website connection was attempted.' : output}</div>
                     </div>
                   )}
                 </div>

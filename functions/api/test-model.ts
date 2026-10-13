@@ -3,6 +3,7 @@ import { z } from 'zod'
 interface Env {
   MOCK_MODE?: string
   NEBIUS_API_KEY?: string
+  NEBIUS_MAX_TOKENS?: string
   NEBIUS_MODEL?: string
 }
 
@@ -12,7 +13,7 @@ interface PagesContext {
 }
 
 const requestSchema = z.object({
-  prompt: z.string().trim().min(1).max(1000).optional(),
+  prompt: z.string().trim().min(1).max(1200).optional(),
 }).strict()
 
 const completionSchema = z.object({
@@ -21,10 +22,17 @@ const completionSchema = z.object({
       content: z.string(),
     }),
   })).min(1),
+  usage: z.object({
+    prompt_tokens: z.number().int().nonnegative().optional(),
+    completion_tokens: z.number().int().nonnegative().optional(),
+    total_tokens: z.number().int().nonnegative().optional(),
+  }).optional(),
 })
 
-const maxRequestBytes = 16 * 1024
+const maxRequestBytes = 4 * 1024
 const maxResponseBytes = 64 * 1024
+const defaultMaxTokens = 600
+const maxAllowedTokens = 2048
 const defaultPrompt = 'Reply with a short confirmation that the model is available.'
 
 async function readTextAtMost(
@@ -74,7 +82,7 @@ function errorResponse(
 export const onRequestPost = async ({ request, env }: PagesContext): Promise<Response> => {
   const bodyText = await readTextAtMost(request.body, maxRequestBytes)
   if (bodyText === null) {
-    return errorResponse(413, 'request_too_large', 'Request body must be 16 KB or smaller.')
+    return errorResponse(413, 'request_too_large', 'Request body must be 4 KB or smaller.')
   }
 
   let body: unknown = {}
@@ -88,7 +96,7 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
 
   const parsed = requestSchema.safeParse(body)
   if (!parsed.success) {
-    return errorResponse(400, 'invalid_request', 'Provide an optional prompt of up to 1000 characters.')
+    return errorResponse(400, 'invalid_request', 'Provide an optional prompt of up to 1200 characters.')
   }
 
   if (env.MOCK_MODE === 'true' && isLocalRequest(request)) {
@@ -101,6 +109,17 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
 
   const apiKey = env.NEBIUS_API_KEY?.trim()
   const model = env.NEBIUS_MODEL?.trim()
+  const configuredMaxTokens = env.NEBIUS_MAX_TOKENS?.trim()
+  const maxTokens = configuredMaxTokens ? Number(configuredMaxTokens) : defaultMaxTokens
+
+  if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > maxAllowedTokens) {
+    return errorResponse(
+      500,
+      'invalid_token_limit',
+      `NEBIUS_MAX_TOKENS must be an integer between 1 and ${maxAllowedTokens}.`,
+    )
+  }
+
   if (!apiKey || !model) {
     return errorResponse(
       503,
@@ -119,7 +138,7 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: parsed.data.prompt ?? defaultPrompt }],
-        max_tokens: 128,
+        max_tokens: maxTokens,
       }),
       signal: AbortSignal.timeout(30_000),
     })
@@ -154,6 +173,11 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
       mock: false,
       model,
       output: completion.data.choices[0].message.content,
+      usage: completion.data.usage ? {
+        promptTokens: completion.data.usage.prompt_tokens,
+        completionTokens: completion.data.usage.completion_tokens,
+        totalTokens: completion.data.usage.total_tokens,
+      } : undefined,
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'TimeoutError') {

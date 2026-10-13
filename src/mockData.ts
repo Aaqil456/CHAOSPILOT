@@ -1,72 +1,63 @@
-import type { Business, ExecutionStep, ProposalDraft } from './types'
-
-export const demoBusinesses: Business[] = [
-  { id: 'business-1', name: 'Northstar Coffee', url: 'https://northstarcoffee.example' },
-  { id: 'business-2', name: 'Fieldwork Studio', url: 'https://fieldworkstudio.example' },
-]
+import type { ExecutionStep, ProposalDraft } from './types'
 
 export const executionSteps: ExecutionStep[] = [
   {
     id: 'plan',
-    title: 'Building a research plan',
-    description: 'Breaking your brief into focused research steps.',
-    tool: 'plan_builder',
-    output: '4 steps planned · 2 business websites in scope',
+    title: 'Planning an example review',
+    description: 'Simulated demo step; no AI request is made.',
+    output: 'Demo only · no research plan was generated',
   },
   {
     id: 'inspect',
-    title: 'Inspecting business websites',
-    description: 'Reviewing each site’s messaging, layout, and calls to action.',
-    tool: 'website_inspector',
-    output: '2 websites reviewed · Key pages and messaging captured',
+    title: 'Website review (simulated)',
+    description: 'No public website content is fetched in this preview.',
+    output: 'Demo only · no websites were opened or reviewed',
   },
   {
     id: 'analyze',
-    title: 'Finding conversion opportunities',
-    description: 'Turning website observations into practical improvements.',
-    tool: 'opportunity_analyzer',
-    output: '6 opportunities identified · Prioritized by potential impact',
+    title: 'Preparing example ideas',
+    description: 'Displaying static sample content, not website-based findings.',
+    output: 'Demo only · no opportunities were analyzed',
   },
   {
     id: 'draft',
-    title: 'Drafting tailored proposals',
-    description: 'Creating a specific, actionable proposal for each business.',
-    tool: 'proposal_writer',
-    output: '2 personalized proposal drafts are ready for review',
+    title: 'Showing sample proposal drafts',
+    description: 'These editable templates are not AI-generated or personalized.',
+    output: 'Sample templates · not generated from your task',
   },
 ]
 
 export const proposalDrafts: Omit<ProposalDraft, 'business'>[] = [
   {
     score: 86,
-    headline: 'Make the first sip feel closer.',
-    intro: 'Northstar Coffee has the makings of a memorable local favorite. A more direct path from the story behind the beans to a first order could turn curious visitors into regulars.',
+    headline: 'Make the first choice simple.',
+    intro: 'This sample draft shows how a business could make its main offer easier to understand and act on.',
     opportunities: [
-      'Bring the featured roast and its tasting notes into the first screen.',
-      'Add a clear “Find your next favorite” path for first-time shoppers.',
-      'Show the subscription value beside the purchase decision.',
+      'Put the main customer benefit near the top of the page.',
+      'Give first-time visitors a clear path to explore the offer.',
+      'Explain the value beside the primary call to action.',
     ],
     accent: 'mint',
   },
   {
     score: 92,
-    headline: 'Let the work speak sooner.',
-    intro: 'Fieldwork Studio’s portfolio can do more of the selling. Lead with recognizable project outcomes, then give prospective clients a simple next step to start a conversation.',
+    headline: 'Put the proof up front.',
+    intro: 'This sample draft shows how a business could use clear evidence to help visitors decide what to do next.',
     opportunities: [
-      'Open with a standout case study and its measurable result.',
-      'Add concise project summaries to make the portfolio easier to scan.',
-      'Move a low-friction project inquiry into the main navigation.',
+      'Feature a customer outcome or useful proof point early.',
+      'Make key information easier to scan.',
+      'Make it simple to ask a question or get started.',
     ],
     accent: 'lavender',
   },
   {
     score: 89,
-    headline: 'Turn more visits into first orders.',
-    intro: 'A clearer first-visit journey can help this business convert attention into action. Sharpen the value proposition and make the next step feel effortless.',
+    headline: 'Make the next step easy.',
+    intro: 'This sample draft shows how clearer messaging and a simpler journey could help visitors take action.',
     opportunities: [
-      'Make the primary customer benefit easy to spot above the fold.',
-      'Use customer proof close to the primary call to action.',
-      'Simplify the route from product discovery to purchase.',
+      'Make the primary customer benefit easy to spot.',
+      'Place supporting proof near the main call to action.',
+      'Reduce friction between discovery and taking action.',
     ],
     accent: 'peach',
   },
