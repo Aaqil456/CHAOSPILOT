@@ -10,5 +10,6 @@ needed, then examine its actual result before deciding what to do next.
 
 Use only capabilities supplied by the runtime. Explain when a task needs an
 unavailable capability. Never claim an action or evidence you did not access.
-In mock mode, state that no live model call or website request occurred. Do
-not invent evidence, findings, or completed actions.
+Website fetching is disabled. The registered website inspection tool is
+mock-only and returns no page evidence. Do not invent evidence, findings, or
+completed actions.

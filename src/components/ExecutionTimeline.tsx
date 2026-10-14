@@ -14,7 +14,7 @@ export function ExecutionTimeline({ status, trace }: ExecutionTimelineProps) {
       <div className="section-heading">
         <div className="section-title-wrap">
           <span className="section-icon timeline-icon"><WandSparkles size={15} /></span>
-          <div><h2 id="timeline-title">Execution trace</h2><p>Mock decisions · no model service or site requests</p></div>
+          <div><h2 id="timeline-title">Execution trace</h2><p>Live model decisions · website requests disabled</p></div>
         </div>
         {hasStarted && (
           <span className={`timeline-run-pill ${status === 'running' ? 'timeline-live' : ''}`}>
@@ -26,13 +26,13 @@ export function ExecutionTimeline({ status, trace }: ExecutionTimelineProps) {
         <div className="timeline-empty">
           <span className="timeline-empty-line" />
           <Clock3 size={16} />
-          <span>Tool calls returned by the mock runtime will appear here.</span>
+          <span>Tool calls returned by the live model will appear here.</span>
         </div>
       ) : trace.length === 0 ? (
         <div className="timeline-empty">
           <span className="timeline-empty-line" />
           <Clock3 size={16} />
-          <span>{status === 'running' ? 'Waiting for the mock agent response.' : 'The mock agent did not call a tool.'}</span>
+          <span>{status === 'running' ? 'Waiting for the agent response.' : 'The model did not call a tool.'}</span>
         </div>
       ) : (
         <div className="timeline-list">

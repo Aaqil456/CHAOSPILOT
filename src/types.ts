@@ -31,10 +31,11 @@ export type AgentToolTrace = {
 }
 
 export type AgentRunResponse = {
-  mode: 'mock'
+  mode: 'live'
   agentName: 'Website Growth Agent'
-  liveModel: false
+  liveModel: true
   liveWebsiteFetch: false
+  model: string
   answer: string
   trace: AgentToolTrace[]
   activatedSkills: string[]

@@ -12,10 +12,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isAgentRunResponse(value: unknown): value is AgentRunResponse {
   return isRecord(value)
-    && value.mode === 'mock'
+    && value.mode === 'live'
     && value.agentName === 'Website Growth Agent'
-    && value.liveModel === false
+    && value.liveModel === true
     && value.liveWebsiteFetch === false
+    && typeof value.model === 'string'
     && typeof value.answer === 'string'
     && Array.isArray(value.trace)
     && Array.isArray(value.activatedSkills)
@@ -180,11 +181,11 @@ function App() {
                 <div className="overview-main">
                   <div className="overview-title-row">
                     <div className="overview-title">
-                      <strong>{isBusy ? 'Mock agent is running' : runStatus === 'completed' ? 'Mock run complete' : runStatus === 'error' ? 'Run needs attention' : runStatus === 'cancelled' ? 'Run cancelled' : 'Ready when you are'}</strong>
-                      <span>{isBusy ? 'Waiting for the bounded mock agent loop to return.' : runStatus === 'completed' ? 'The answer and trace below came from the mock runtime.' : runStatus === 'error' ? 'The run failed before a valid result was returned.' : runStatus === 'cancelled' ? 'The run request was cancelled.' : 'No AI model or website request is made by this mock run.'}</span>
+                      <strong>{isBusy ? 'Website Growth Agent is running' : runStatus === 'completed' ? 'Agent run complete' : runStatus === 'error' ? 'Run needs attention' : runStatus === 'cancelled' ? 'Run cancelled' : 'Ready when you are'}</strong>
+                      <span>{isBusy ? 'Waiting for the bounded Nebius agent loop to return.' : runStatus === 'completed' ? 'The answer and trace below came from the live model and registered tools.' : runStatus === 'error' ? 'The run failed before a valid result was returned.' : runStatus === 'cancelled' ? 'The run request was cancelled.' : 'Starting a run calls the configured Nebius model. No website is fetched.'}</span>
                     </div>
                     <span className={`run-status status-${runStatus}`}>
-                      <span className="status-dot" />{runStatus === 'running' ? 'MOCK RUNNING' : runStatus === 'completed' ? 'MOCK COMPLETE' : runStatus === 'error' ? 'ACTION NEEDED' : runStatus === 'cancelled' ? 'CANCELLED' : 'STANDING BY'}
+                      <span className="status-dot" />{runStatus === 'running' ? 'LIVE MODEL RUNNING' : runStatus === 'completed' ? 'LIVE MODEL COMPLETE' : runStatus === 'error' ? 'ACTION NEEDED' : runStatus === 'cancelled' ? 'CANCELLED' : 'STANDING BY'}
                     </span>
                   </div>
                 </div>
@@ -200,16 +201,16 @@ function App() {
               <div className="section-heading results-heading">
                 <div className="section-title-wrap">
                   <span className="section-icon results-icon"><Sparkles size={16} /></span>
-                  <div><h2 id="results-title">Website Growth Agent</h2><p>Mock runtime · no live model</p></div>
+                  <div><h2 id="results-title">Website Growth Agent</h2><p>{runResult ? `Nebius · ${runResult.model}` : 'Live Nebius model · website fetching disabled'}</p></div>
                 </div>
-                {runResult && <span className="results-count">{runResult.turns} MOCK TURNS</span>}
+                {runResult && <span className="results-count">{runResult.turns} MODEL TURNS</span>}
               </div>
               <div className="results-body">
                 {runStatus === 'completed' && runResult ? (
                   <div className="results-state agent-answer">
-                    <strong>Mock agent response</strong>
+                    <strong>Agent response</strong>
                     <p>{runResult.answer}</p>
-                    <small>No website was fetched. No Nebius request was made.</small>
+                    <small>Live model request completed. No website was fetched. A run may make multiple model requests and use Nebius credits.</small>
                     {runResult.activatedSkills.length > 0 && (
                       <div className="agent-skills">
                         <strong>Loaded skill instructions</strong>
@@ -221,7 +222,7 @@ function App() {
                   <div className="results-state loading-state">
                     <div className="loading-orbit"><span /><span /><span /></div>
                     <strong>Waiting for the agent response</strong>
-                    <p>No progress percentage is available; the endpoint returns a completed mock trace.</p>
+                    <p>No progress percentage is available; tool calls appear only after the server returns the completed run.</p>
                   </div>
                 ) : runStatus === 'error' ? (
                   <div className="results-state error-state" role="alert">
@@ -240,14 +241,14 @@ function App() {
                   <div className="results-state empty-state">
                     <span className="empty-icon"><Sparkles size={20} /></span>
                     <strong>Your response will appear here</strong>
-                    <p>The mock model may select the registered mock tool. Neither website inspection nor live AI is enabled.</p>
-                    <span className="results-hint"><ArrowUpRight size={13} /> Tool results are explicitly marked as mock</span>
+                    <p>Starting a task uses the configured Nebius model. Website fetching is disabled; the only registered website tool returns a mock result.</p>
+                    <span className="results-hint"><ArrowUpRight size={13} /> Live inference may use Nebius credits</span>
                   </div>
                 )}
               </div>
             </section>
           </div>
-          <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE IMPROVEMENT IDEAS</span><span>Mock agent preview <span className="footer-dot">·</span> No live model or website requests</span></footer>
+          <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE IMPROVEMENT IDEAS</span><span>Live Nebius model <span className="footer-dot">·</span> Website fetching disabled</span></footer>
         </div>
       </main>
     </div>

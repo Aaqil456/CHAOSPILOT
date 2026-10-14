@@ -1,12 +1,19 @@
 import { z } from 'zod'
 import { agentInstructions } from '../agent/instructions.generated'
-import { mockModel } from '../agent/mockModel'
+import { createNebiusModel, NebiusModelError } from '../agent/nebiusModel'
 import { runAgent } from '../agent/runtime'
 import { agentSkills } from '../agent/skills/registry'
 import { agentTools } from '../agent/tools'
 
+interface Env {
+  NEBIUS_API_KEY?: string
+  NEBIUS_MAX_TOKENS?: string
+  NEBIUS_MODEL?: string
+}
+
 interface PagesContext {
   request: Request
+  env: Env
 }
 
 const requestSchema = z.object({
@@ -19,6 +26,8 @@ const requestSchema = z.object({
 }).strict()
 
 const maxRequestBytes = 8 * 1024
+const defaultMaxTokens = 600
+const maxAllowedTokens = 2048
 
 async function readTextAtMost(
   body: ReadableStream<Uint8Array> | null,
@@ -53,7 +62,7 @@ function errorResponse(status: number, code: string, message: string): Response 
   return Response.json({ error: { code, message } }, { status })
 }
 
-export const onRequestPost = async ({ request }: PagesContext): Promise<Response> => {
+export const onRequestPost = async ({ request, env }: PagesContext): Promise<Response> => {
   const text = await readTextAtMost(request.body, maxRequestBytes)
   if (text === null) {
     return errorResponse(413, 'request_too_large', 'Request body must be 8 KB or smaller.')
@@ -80,20 +89,54 @@ export const onRequestPost = async ({ request }: PagesContext): Promise<Response
     return errorResponse(400, 'invalid_business_url', 'Business URLs must use HTTP(S) and contain no credentials.')
   }
 
-  const result = await runAgent({
-    task: parsed.data.task,
-    businesses: parsed.data.businesses,
-    model: mockModel,
-    tools: agentTools,
-    instructions: agentInstructions,
-    skills: agentSkills,
-  })
+  const apiKey = env.NEBIUS_API_KEY?.trim()
+  const modelId = env.NEBIUS_MODEL?.trim()
+  const configuredMaxTokens = env.NEBIUS_MAX_TOKENS?.trim()
+  const maxTokens = configuredMaxTokens ? Number(configuredMaxTokens) : defaultMaxTokens
 
-  return Response.json({
-    mode: 'mock',
-    agentName: 'Website Growth Agent',
-    liveModel: false,
-    liveWebsiteFetch: false,
-    ...result,
-  })
+  if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > maxAllowedTokens) {
+    return errorResponse(
+      500,
+      'invalid_token_limit',
+      `NEBIUS_MAX_TOKENS must be an integer between 1 and ${maxAllowedTokens}.`,
+    )
+  }
+
+  if (!apiKey || !modelId) {
+    return errorResponse(
+      503,
+      'credentials_missing',
+      'Configure NEBIUS_API_KEY and NEBIUS_MODEL on the server before running the live agent.',
+    )
+  }
+
+  try {
+    const result = await runAgent({
+      task: parsed.data.task,
+      businesses: parsed.data.businesses,
+      model: createNebiusModel({
+        apiKey,
+        model: modelId,
+        maxTokens,
+        signal: request.signal,
+      }),
+      tools: agentTools,
+      instructions: agentInstructions,
+      skills: agentSkills,
+    })
+
+    return Response.json({
+      mode: 'live',
+      agentName: 'Website Growth Agent',
+      liveModel: true,
+      liveWebsiteFetch: false,
+      model: modelId,
+      ...result,
+    })
+  } catch (error) {
+    if (error instanceof NebiusModelError) {
+      return errorResponse(error.status, error.code, error.message)
+    }
+    return errorResponse(500, 'agent_run_failed', 'The agent run failed unexpectedly.')
+  }
 }
