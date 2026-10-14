@@ -1,12 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, Bot, CircleAlert, ShieldCheck, Sparkles, Zap } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowUpRight, Bot, CircleAlert, Sparkles, Zap } from 'lucide-react'
 import { ExecutionTimeline } from './components/ExecutionTimeline'
-import { ProposalCard } from './components/ProposalCard'
 import { TaskComposer } from './components/TaskComposer'
 import { ModelTestPanel } from './components/ModelTestPanel'
-import { executionSteps, proposalDrafts } from './mockData'
-import type { Business, RunStatus } from './types'
+import type { AgentRunResponse, Business, RunStatus } from './types'
 import './App.css'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isAgentRunResponse(value: unknown): value is AgentRunResponse {
+  return isRecord(value)
+    && value.mode === 'mock'
+    && value.agentName === 'Website Growth Agent'
+    && value.liveModel === false
+    && value.liveWebsiteFetch === false
+    && typeof value.answer === 'string'
+    && Array.isArray(value.trace)
+    && Array.isArray(value.activatedSkills)
+    && value.activatedSkills.every((skill) => typeof skill === 'string')
+    && typeof value.turns === 'number'
+    && (value.stopReason === 'final' || value.stopReason === 'turn_limit' || value.stopReason === 'tool_call_limit')
+    && value.trace.every((item) =>
+      isRecord(item)
+      && typeof item.id === 'string'
+      && typeof item.name === 'string'
+      && typeof item.output === 'string'
+      && (item.status === 'completed' || item.status === 'error'),
+    )
+}
 
 function App() {
   const [businesses, setBusinesses] = useState<Business[]>([
@@ -14,50 +37,12 @@ function App() {
   ])
   const [task, setTask] = useState('Suggest practical website improvements to help these businesses attract and convert more customers.')
   const [runStatus, setRunStatus] = useState<RunStatus>('idle')
-  const [completedSteps, setCompletedSteps] = useState(0)
-  const [failedStepIndex, setFailedStepIndex] = useState<number | null>(null)
+  const [runResult, setRunResult] = useState<AgentRunResponse | null>(null)
   const [runError, setRunError] = useState('')
   const [formError, setFormError] = useState('')
-  const [shouldFail, setShouldFail] = useState(false)
+  const requestController = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    if (runStatus !== 'running') return
-
-    if (completedSteps >= executionSteps.length) {
-      setRunStatus('completed')
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      if (shouldFail && completedSteps === 1) {
-        setFailedStepIndex(completedSteps)
-        setRunError('This is a simulated failure preview. No website connection was attempted.')
-        setRunStatus('error')
-        return
-      }
-
-      setCompletedSteps((count) => count + 1)
-    }, 1050)
-
-    return () => window.clearTimeout(timeout)
-  }, [completedSteps, runStatus, shouldFail])
-
-  const progress = useMemo(() => {
-    if (runStatus === 'completed') return 100
-    if (runStatus === 'running') {
-      return Math.min(96, Math.round(((completedSteps + 0.45) / executionSteps.length) * 100))
-    }
-    return 0
-  }, [completedSteps, runStatus])
-
-  const proposals = useMemo(
-    () =>
-      businesses.map((business, index) => ({
-        ...proposalDrafts[index % proposalDrafts.length],
-        business,
-      })),
-    [businesses],
-  )
+  useEffect(() => () => requestController.current?.abort(), [])
 
   function updateBusiness(id: string, updates: Partial<Business>) {
     setBusinesses((current) =>
@@ -80,40 +65,85 @@ function App() {
     setFormError('')
   }
 
-  function startRun() {
+  async function startRun() {
     if (!task.trim()) {
       setFormError('Add a task description before starting.')
       return
     }
-    if (businesses.length === 0) {
-      setFormError('Add at least one business website.')
-      return
-    }
-    const invalidBusiness = businesses.find((business) => {
+
+    const submittedBusinesses = businesses.filter(
+      (business) => business.name.trim() || business.url.trim(),
+    )
+    const invalidBusiness = submittedBusinesses.find((business) => {
       if (!business.name.trim() || !business.url.trim()) return true
       try {
         const url = new URL(business.url)
-        return url.protocol !== 'https:' && url.protocol !== 'http:'
+        return (url.protocol !== 'https:' && url.protocol !== 'http:')
+          || Boolean(url.username || url.password)
       } catch {
         return true
       }
     })
     if (invalidBusiness) {
-      setFormError('Give each business a name and a valid public website URL.')
+      setFormError('Give each submitted business a name and a valid HTTP(S) website URL.')
       return
     }
 
     setFormError('')
     setRunError('')
-    setFailedStepIndex(null)
-    setCompletedSteps(0)
-    setShouldFail(/\bsimulate error\b/i.test(task))
+    setRunResult(null)
     setRunStatus('running')
+    const controller = new AbortController()
+    requestController.current = controller
+
+    try {
+      const response = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: task.trim(),
+          businesses: submittedBusinesses.map(({ id, name, url }) => ({
+            id,
+            name: name.trim(),
+            url: url.trim(),
+          })),
+        }),
+        signal: controller.signal,
+      })
+      let body: unknown
+      try {
+        body = await response.json()
+      } catch {
+        throw new Error('The run endpoint returned invalid JSON.')
+      }
+
+      if (!response.ok) {
+        const message = isRecord(body) && isRecord(body.error) && typeof body.error.message === 'string'
+          ? body.error.message
+          : 'The agent run failed.'
+        throw new Error(message)
+      }
+      if (!isAgentRunResponse(body)) {
+        throw new Error('The run endpoint returned an invalid response.')
+      }
+
+      setRunResult(body)
+      setRunStatus('completed')
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setRunStatus('cancelled')
+        setRunError('The request was cancelled. No progress or tool calls are shown unless returned by the server.')
+      } else {
+        setRunStatus('error')
+        setRunError(error instanceof Error ? error.message : 'The agent run failed unexpectedly.')
+      }
+    } finally {
+      if (requestController.current === controller) requestController.current = null
+    }
   }
 
   function cancelRun() {
-    setRunStatus('cancelled')
-    setRunError('This demo was cancelled. Start again whenever you are ready.')
+    requestController.current?.abort()
   }
 
   const isBusy = runStatus === 'running'
@@ -145,32 +175,23 @@ function App() {
                 onStart={startRun}
                 onCancel={cancelRun}
               />
-              <section className="run-overview panel" aria-label="Demo progress">
+              <section className="run-overview panel" aria-label="Run status">
                 <div className="overview-icon"><Zap size={17} fill="currentColor" /></div>
                 <div className="overview-main">
                   <div className="overview-title-row">
                     <div className="overview-title">
-                      <strong>{isBusy ? 'Demo is running' : runStatus === 'completed' ? 'Demo complete' : runStatus === 'error' ? 'Demo needs attention' : runStatus === 'cancelled' ? 'Demo cancelled' : 'Ready when you are'}</strong>
-                      <span>{isBusy ? 'Showing simulated steps; no websites are being fetched.' : runStatus === 'completed' ? 'Example proposal drafts are ready to review.' : runStatus === 'error' ? 'The simulated run stopped before it could finish.' : runStatus === 'cancelled' ? 'The simulated run was stopped.' : 'Your task starts the one-page demo workflow.'}</span>
+                      <strong>{isBusy ? 'Mock agent is running' : runStatus === 'completed' ? 'Mock run complete' : runStatus === 'error' ? 'Run needs attention' : runStatus === 'cancelled' ? 'Run cancelled' : 'Ready when you are'}</strong>
+                      <span>{isBusy ? 'Waiting for the bounded mock agent loop to return.' : runStatus === 'completed' ? 'The answer and trace below came from the mock runtime.' : runStatus === 'error' ? 'The run failed before a valid result was returned.' : runStatus === 'cancelled' ? 'The run request was cancelled.' : 'No AI model or website request is made by this mock run.'}</span>
                     </div>
                     <span className={`run-status status-${runStatus}`}>
-                      <span className="status-dot" />{runStatus === 'running' ? 'SIMULATING' : runStatus === 'completed' ? 'COMPLETE' : runStatus === 'error' ? 'ACTION NEEDED' : runStatus === 'cancelled' ? 'CANCELLED' : 'STANDING BY'}
+                      <span className="status-dot" />{runStatus === 'running' ? 'MOCK RUNNING' : runStatus === 'completed' ? 'MOCK COMPLETE' : runStatus === 'error' ? 'ACTION NEEDED' : runStatus === 'cancelled' ? 'CANCELLED' : 'STANDING BY'}
                     </span>
-                  </div>
-                  <div className="progress-track" role="progressbar" aria-label="Demo progress" aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}>
-                    <div className={`progress-fill ${runStatus === 'error' ? 'progress-error' : ''}`} style={{ width: `${progress}%` }} />
-                  </div>
-                  <div className="progress-caption">
-                    <span>{runStatus === 'idle' ? 'Ready to start' : `${Math.min(completedSteps, executionSteps.length)} of ${executionSteps.length} demo steps complete`}</span>
-                    <strong>{progress}%</strong>
                   </div>
                 </div>
               </section>
               <ExecutionTimeline
                 status={runStatus}
-                completedSteps={completedSteps}
-                failedStepIndex={failedStepIndex}
-                businesses={businesses}
+                trace={runResult?.trace ?? []}
               />
               <ModelTestPanel task={task} businesses={businesses} />
             </div>
@@ -179,58 +200,58 @@ function App() {
               <div className="section-heading results-heading">
                 <div className="section-title-wrap">
                   <span className="section-icon results-icon"><Sparkles size={16} /></span>
-                  <div><h2 id="results-title">Example results</h2><p>Editable proposal templates</p></div>
+                  <div><h2 id="results-title">Website Growth Agent</h2><p>Mock runtime · no live model</p></div>
                 </div>
-                {runStatus === 'completed' && <span className="results-count">{proposals.length} EXAMPLES</span>}
+                {runResult && <span className="results-count">{runResult.turns} MOCK TURNS</span>}
               </div>
               <div className="results-body">
-                {runStatus === 'completed' ? (
-                  <div className="proposal-list">
-                    <div className="results-intro"><CircleCheckIcon /> <span>Example drafts only. No websites were researched and these are not AI-generated.</span></div>
-                    {proposals.map((proposal) => <ProposalCard key={proposal.business.id} proposal={proposal} />)}
-                    <div className="results-disclaimer"><ShieldCheck size={14} /> Drafts are for review only. No changes were made to these websites.</div>
+                {runStatus === 'completed' && runResult ? (
+                  <div className="results-state agent-answer">
+                    <strong>Mock agent response</strong>
+                    <p>{runResult.answer}</p>
+                    <small>No website was fetched. No Nebius request was made.</small>
+                    {runResult.activatedSkills.length > 0 && (
+                      <div className="agent-skills">
+                        <strong>Loaded skill instructions</strong>
+                        <ul>{runResult.activatedSkills.map((skill) => <li key={skill}>{skill}</li>)}</ul>
+                      </div>
+                    )}
                   </div>
                 ) : runStatus === 'running' ? (
                   <div className="results-state loading-state">
                     <div className="loading-orbit"><span /><span /><span /></div>
-                    <strong>Preparing your proposals</strong>
-                    <p>Watching a simulated workflow. No websites are being fetched.</p>
-                    <div className="skeleton-card"><div className="skeleton-line skeleton-line-short" /><div className="skeleton-line" /><div className="skeleton-line skeleton-line-medium" /></div>
-                    <div className="skeleton-card"><div className="skeleton-line skeleton-line-short" /><div className="skeleton-line" /><div className="skeleton-line skeleton-line-medium" /></div>
+                    <strong>Waiting for the agent response</strong>
+                    <p>No progress percentage is available; the endpoint returns a completed mock trace.</p>
                   </div>
                 ) : runStatus === 'error' ? (
                   <div className="results-state error-state" role="alert">
                     <span className="empty-icon error-empty-icon"><CircleAlert size={21} /></span>
-                    <strong>The demo stopped early</strong>
+                    <strong>The run failed</strong>
                     <p>{runError}</p>
-                    <button className="secondary-button retry-button" onClick={startRun}><RotateIcon /> Try again</button>
+                    <button className="secondary-button retry-button" onClick={() => void startRun()}><RotateIcon /> Try again</button>
                   </div>
                 ) : runStatus === 'cancelled' ? (
                   <div className="results-state empty-state">
                     <span className="empty-icon"><Bot size={21} /></span>
-                    <strong>Demo paused</strong>
-                    <p>Your inputs are saved here. Start again whenever you're ready.</p>
+                    <strong>Run cancelled</strong>
+                    <p>{runError}</p>
                   </div>
                 ) : (
                   <div className="results-state empty-state">
                     <span className="empty-icon"><Sparkles size={20} /></span>
-                    <strong>Your examples will appear here</strong>
-                    <p>Start a demo run to see example proposal drafts. This preview does not inspect websites or generate results with AI.</p>
-                    <span className="results-hint"><ArrowUpRight size={13} /> Edit example drafts after the run</span>
+                    <strong>Your response will appear here</strong>
+                    <p>The mock model may select the registered mock tool. Neither website inspection nor live AI is enabled.</p>
+                    <span className="results-hint"><ArrowUpRight size={13} /> Tool results are explicitly marked as mock</span>
                   </div>
                 )}
               </div>
             </section>
           </div>
-          <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE IMPROVEMENT IDEAS</span><span>Demo preview <span className="footer-dot">·</span> No websites are fetched</span></footer>
+          <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE IMPROVEMENT IDEAS</span><span>Mock agent preview <span className="footer-dot">·</span> No live model or website requests</span></footer>
         </div>
       </main>
     </div>
   )
-}
-
-function CircleCheckIcon() {
-  return <span className="success-check"><Sparkles size={13} /></span>
 }
 
 function RotateIcon() {

@@ -1,6 +1,6 @@
 # CHAOSPILOT
 
-ChaosPilot opens directly to a one-page workspace for drafting website-improvement ideas for up to three businesses. Its current workflow is a clearly labelled interactive demo; it does not fetch websites or generate live proposals.
+ChaosPilot opens directly to a one-page workspace with an open-ended task composer and optional details for up to three businesses. The **Website Growth Agent** currently runs in mock mode: it demonstrates a bounded agent/tool/skill orchestration path but does not use a live model or fetch websites.
 
 ## Setup
 
@@ -17,7 +17,15 @@ npm run lint
 
 ## Frontend demo
 
-The app opens directly on the task form with one blank business row and a practical task prompt. Add up to three public business URLs and start a demo task; progress is simulated and results are static editable examples, not live website research or AI-generated proposals. The separate **Manual model test** button is the only frontend action that calls the model API; it sends one request per click and is never triggered by page load or UI updates. Live model requests may use paid Nebius credit.
+The app opens directly on the task form with one blank business row and a practical task prompt. Submitting a task calls `POST /api/run`; the UI shows the actual mock response, any skill instructions loaded by the runtime, and only tool calls returned by that run. The registered `inspect_website` tool is a mock and returns no page evidence. It makes no website request. The separate **Manual model test** button remains an explicit, independent action that can call the configured model API and may use paid Nebius credit; it is never triggered by the agent run.
+
+The runtime loads its always-on instructions from `functions/agent/AGENT.md` and registers four optional skills under `functions/agent/skills/`. A skill is only reported as loaded after the runtime resolves the mock model's activation request against the registered skill catalog. The current mock model uses deterministic task-keyword rules; it is not semantic model reasoning or live model tool calling.
+
+Run the agent tests with Node.js's built-in test runner (Node.js 24 or another version supporting `--experimental-strip-types`):
+
+```sh
+npm run test:agent
+```
 
 ## Local Pages Functions
 
@@ -52,4 +60,4 @@ Keep `NEBIUS_MODEL` unset until its exact ID is confirmed in your Token Factory 
 
 ## Deployment
 
-Cloudflare Pages serves the Vite build from `dist` and discovers Functions under `functions/`. Set production environment values in the Pages project settings; keep the API key as a secret. Only the explicit manual model test calls the API; automated missions remain simulated.
+Cloudflare Pages serves the Vite build from `dist` and discovers Functions under `functions/`. The mock agent endpoint does not use Nebius credentials. The separate manual model test uses server-side environment values when explicitly invoked; keep `NEBIUS_API_KEY` as a Pages secret. Live website inspection remains disabled until a defensible SSRF-safe fetching approach is implemented and verified. The build runs `scripts/embed-agent-markdown.mjs` to embed the Markdown instructions into a generated TypeScript module. This avoids runtime filesystem access and Wrangler Markdown loader configuration; `npm run build` and the Pages Functions bundle build verify the generated module.

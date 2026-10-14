@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "pages:dev": "wrangler pages dev dist",
-    "build": "tsc -b && vite build",
+    "pages:dev": "node scripts/embed-agent-markdown.mjs && wrangler pages dev dist",
+    "build": "node scripts/embed-agent-markdown.mjs && tsc -b && vite build",
     "lint": "eslint .",
+    "test:agent": "node --experimental-strip-types --test functions/agent/runtime.test.ts",
+    "test": "npm run test:agent",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -18,6 +18,7 @@ dist-ssr
 .dev.vars.*
 .dev.vars.example
 .wrangler/
+/functions/agent/instructions.generated.ts
 
 # Editor directories and files
 .vscode/*

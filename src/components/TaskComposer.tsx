@@ -40,7 +40,7 @@ export function TaskComposer({
           <span className="section-icon composer-icon"><Rocket size={15} /></span>
           <div><h2 id="composer-title">Your task</h2><p>Describe what you want to accomplish</p></div>
         </div>
-        <span className="sample-label"><span /> DEMO PREVIEW</span>
+        <span className="sample-label"><span /> MOCK AGENT</span>
       </div>
 
       <form className="composer-form" onSubmit={submit}>
@@ -105,16 +105,16 @@ export function TaskComposer({
 
         {formError && <div className="form-error" role="alert"><CircleAlert size={15} />{formError}</div>}
         <div className="composer-actions">
-          <div className="privacy-note"><span className="privacy-icon"><Globe2 size={13} /></span><span>Public HTTP(S) URLs <span className="note-separator">·</span> Demo makes no site requests</span></div>
+          <div className="privacy-note"><span className="privacy-icon"><Globe2 size={13} /></span><span>HTTP(S) URLs <span className="note-separator">·</span> Mock only; no site requests</span></div>
           {isBusy ? (
             <button type="button" className="cancel-button" onClick={onCancel}><span className="cancel-square" /> Cancel run</button>
           ) : (
             <button type="submit" className="start-button">
-              <Rocket size={15} /> {hasRun ? 'Start another task' : 'Start demo task'} <span className="button-arrow">↗</span>
+              <Rocket size={15} /> {hasRun ? 'Start another task' : 'Start mock run'} <span className="button-arrow">↗</span>
             </button>
           )}
         </div>
-        <div className="demo-error-hint">Demo only: no sites are fetched. Enter “simulate error” to preview a failure.</div>
+        <div className="demo-error-hint">Mock decisions and mock tool output only. No AI model or website is contacted.</div>
       </form>
     </section>
   )

@@ -1382,6 +1382,41 @@
   line-height: 1.6;
 }
 
+.agent-skills {
+  width: 100%;
+  max-width: 340px;
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid rgba(162, 140, 255, 0.15);
+  border-radius: 9px;
+  color: #aaa0d4;
+  background: rgba(147, 121, 255, 0.035);
+  text-align: left;
+}
+
+.agent-skills > strong {
+  color: #c9c0ed;
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.agent-skills ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 9px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-skills li {
+  padding: 4px 7px;
+  border: 1px solid rgba(162, 140, 255, 0.14);
+  border-radius: 999px;
+  color: #aaa0d4;
+  font-size: 9px;
+}
+
 .results-hint {
   display: inline-flex;
   align-items: center;
