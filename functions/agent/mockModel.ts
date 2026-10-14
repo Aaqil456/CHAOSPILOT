@@ -1,72 +1,79 @@
 import type { AgentModel, AgentModelInput } from './runtime'
 
-function selectSkills(input: AgentModelInput): string[] {
-  const task = input.task.toLowerCase()
-  const requested: string[] = []
-
-  if (/\b(competitor|competitors|compare|comparison)\b/.test(task)) {
-    requested.push('competitor-research')
-  }
-  if (/\b(analy[sz]e|analysis|prioriti[sz]e|recommend|recommendation|opportunit|improv)\b/.test(task)) {
-    requested.push('website-analysis')
-  }
-  if (/\b(write|draft|create|generate|copy|content|proposal|landing page)\b/.test(task)) {
-    requested.push('content-generation')
-  }
-  if (
-    input.businesses.length > 0
-    && /\b(website|web page|site)\b/.test(task)
-    && /\b(inspect|review|audit|compare|comparison|analy[sz]e|improv|opportunit)\b/.test(task)
-  ) {
-    requested.push('website-inspection')
+function mockDecision(input: AgentModelInput) {
+  const toolMessages = input.messages.filter((message) => message.role === 'tool')
+  const listedFiles = toolMessages.find((message) => message.toolName === 'list_files')
+  if (!listedFiles) {
+    return { type: 'tool_calls' as const, toolCalls: [{ id: 'mock-list', name: 'list_files', arguments: {} }] }
   }
 
-  const active = new Set(input.activeSkills.map((skill) => skill.name))
-  const available = new Set(input.availableSkills.map((skill) => skill.name))
-  return [...new Set(requested)].filter((name) => available.has(name) && !active.has(name))
-}
+  let existingPaths: string[]
+  try {
+    const result = JSON.parse(listedFiles.content) as { files?: Array<{ path?: string }> }
+    existingPaths = result.files?.flatMap((file) => typeof file.path === 'string' ? [file.path] : []) ?? []
+  } catch {
+    return { type: 'final' as const, content: '[MOCK] Existing project inventory was invalid; no files were changed.' }
+  }
 
-function shouldInspect(input: AgentModelInput): boolean {
-  return input.businesses.length > 0
-    && /\b(website|web page|site|competitor|compare|comparison)\b/i.test(input.task)
-    && /\b(inspect|review|audit|compare|comparison|analy[sz]e|improv|opportunit)\b/i.test(input.task)
-    && input.tools.some((tool) => tool.name === 'inspect_website')
+  const written = new Set(toolMessages.filter((message) => message.toolName === 'write_file')
+    .map((message) => {
+      try {
+        return (JSON.parse(message.content) as { path?: string }).path
+      } catch {
+        return undefined
+      }
+    }))
+  const knownPaths = new Set([...existingPaths, ...[...written].filter((path): path is string => Boolean(path))])
+  if (!knownPaths.has('index.html')) {
+    return {
+      type: 'tool_calls' as const,
+      toolCalls: [{
+        id: 'mock-write-html',
+        name: 'write_file',
+        arguments: {
+          path: 'index.html',
+          content: '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>My First Website</title></head><body><main><p>CHAOSPILOT · MOCK PREVIEW</p><h1>A place to begin.</h1><p>This deterministic fixture demonstrates the file-operation loop. It is not AI-generated.</p><button id="hello">Say hello</button><output id="message"></output></main></body></html>',
+        },
+      }],
+    }
+  }
+
+  if (!knownPaths.has('styles.css')) {
+    return {
+      type: 'tool_calls' as const,
+      toolCalls: [{
+        id: 'mock-write-css',
+        name: 'write_file',
+        arguments: {
+          path: 'styles.css',
+          content: 'body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111217;color:#f3f0ff;font:16px system-ui}main{max-width:38rem;padding:3rem}h1{font-size:clamp(2.5rem,8vw,5rem)}button{padding:.8rem 1rem;border:0;border-radius:.5rem;background:#a491ff;color:#111217}',
+        },
+      }],
+    }
+  }
+
+  if (!knownPaths.has('script.js')) {
+    return {
+      type: 'tool_calls' as const,
+      toolCalls: [{
+        id: 'mock-write-js',
+        name: 'write_file',
+        arguments: {
+          path: 'script.js',
+          content: "document.querySelector('#hello')?.addEventListener('click',()=>{document.querySelector('#message').textContent='Hello from the isolated preview!'})",
+        },
+      }],
+    }
+  }
+
+  return {
+    type: 'final' as const,
+    content: '[MOCK] A deterministic example project is ready. This did not call Nebius and does not prove live model tool-calling works.',
+  }
 }
 
 export const mockModel: AgentModel = {
   async decide(input) {
-    const skillsToActivate = selectSkills(input)
-    if (skillsToActivate.length > 0) {
-      return { type: 'activate_skills', skillNames: skillsToActivate }
-    }
-
-    const inspectionResults = input.messages.filter(
-      (message) => message.role === 'tool' && message.toolName === 'inspect_website',
-    )
-    if (shouldInspect(input) && inspectionResults.length < input.businesses.length) {
-      const nextBusiness = input.businesses[inspectionResults.length]
-      if (nextBusiness) {
-        return {
-          type: 'tool_calls',
-          toolCalls: [{
-            id: `mock-inspect-${inspectionResults.length + 1}`,
-            name: 'inspect_website',
-            arguments: { businessId: nextBusiness.id },
-          }],
-        }
-      }
-    }
-
-    if (inspectionResults.length > 0) {
-      return {
-        type: 'final',
-        content: 'The mock inspection results contain no page evidence, so I cannot make factual or personalized findings. This run made no website requests and no live model call. Enable a verified, SSRF-safe inspection capability and compatible model before asking for evidence-based website conclusions.',
-      }
-    }
-
-    return {
-      type: 'final',
-      content: 'This mock run cannot reliably complete open-ended tasks because no live model is connected. It made no website request and no Nebius call. The registered mock tool can demonstrate orchestration, but returns no real-world evidence.',
-    }
+    return mockDecision(input)
   },
 }

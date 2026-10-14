@@ -1,262 +1,248 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpRight, Bot, CircleAlert, Sparkles, Zap } from 'lucide-react'
+import { Bot, CircleAlert, Code2, Sparkles, Zap } from 'lucide-react'
 import { ExecutionTimeline } from './components/ExecutionTimeline'
-import { TaskComposer } from './components/TaskComposer'
-import { ModelTestPanel } from './components/ModelTestPanel'
-import type { AgentRunResponse, Business, RunStatus } from './types'
+import { ProjectEditor } from './components/ProjectEditor'
+import { WebsitePreview } from './components/WebsitePreview'
+import { loadProject, saveProject } from './projectState'
+import type { ProjectFilePath, ProjectFiles } from '../functions/agent/projectFiles'
+import { validateProjectFiles } from '../functions/agent/projectFiles'
+import type { AgentRunResponse, AgentToolTrace, RunStatus } from './types'
 import './App.css'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function isAgentRunResponse(value: unknown): value is AgentRunResponse {
-  return isRecord(value)
-    && value.mode === 'live'
-    && value.agentName === 'Website Growth Agent'
-    && value.liveModel === true
-    && value.liveWebsiteFetch === false
-    && typeof value.model === 'string'
-    && typeof value.answer === 'string'
-    && Array.isArray(value.trace)
-    && Array.isArray(value.activatedSkills)
-    && value.activatedSkills.every((skill) => typeof skill === 'string')
-    && typeof value.turns === 'number'
-    && (value.stopReason === 'final' || value.stopReason === 'turn_limit' || value.stopReason === 'tool_call_limit')
-    && value.trace.every((item) =>
-      isRecord(item)
-      && typeof item.id === 'string'
-      && typeof item.name === 'string'
-      && typeof item.output === 'string'
-      && (item.status === 'completed' || item.status === 'error'),
-    )
+function parseAgentRunResponse(value: unknown): AgentRunResponse {
+  if (
+    !isRecord(value)
+    || (value.mode !== 'live' && value.mode !== 'mock')
+    || value.agentName !== 'ChaosPilot Website Agent'
+    || value.liveModel !== (value.mode === 'live')
+    || typeof value.model !== 'string'
+    || typeof value.answer !== 'string'
+    || !Array.isArray(value.trace)
+    || typeof value.turns !== 'number'
+    || (value.stopReason !== 'final' && value.stopReason !== 'turn_limit' && value.stopReason !== 'tool_call_limit')
+  ) {
+    throw new Error('The agent returned an invalid project response.')
+  }
+  const trace = value.trace as AgentToolTrace[]
+  if (!trace.every((item) =>
+    isRecord(item)
+    && typeof item.id === 'string'
+    && typeof item.name === 'string'
+    && typeof item.input !== 'undefined'
+    && typeof item.output === 'string'
+    && (item.status === 'completed' || item.status === 'error'),
+  )) {
+    throw new Error('The agent returned an invalid execution trace.')
+  }
+  return {
+    mode: value.mode,
+    agentName: 'ChaosPilot Website Agent',
+    liveModel: value.liveModel,
+    model: value.model,
+    answer: value.answer,
+    files: validateProjectFiles(value.files),
+    trace,
+    turns: value.turns,
+    stopReason: value.stopReason,
+  }
 }
 
 function App() {
-  const [businesses, setBusinesses] = useState<Business[]>([
-    { id: 'business-1', name: '', url: '' },
-  ])
-  const [task, setTask] = useState('Suggest practical website improvements to help these businesses attract and convert more customers.')
+  const [initialProject] = useState(() => {
+    try {
+      return { project: loadProject(window.localStorage), error: '' }
+    } catch (error) {
+      return {
+        project: { task: '', files: {} as ProjectFiles },
+        error: error instanceof Error ? error.message : 'Could not read saved project.',
+      }
+    }
+  })
+  const [task, setTask] = useState(initialProject.project.task)
+  const [files, setFiles] = useState<ProjectFiles>(initialProject.project.files)
+  const [selectedFile, setSelectedFile] = useState<ProjectFilePath>('index.html')
+  const [persistenceError, setPersistenceError] = useState(initialProject.error)
   const [runStatus, setRunStatus] = useState<RunStatus>('idle')
   const [runResult, setRunResult] = useState<AgentRunResponse | null>(null)
   const [runError, setRunError] = useState('')
-  const [formError, setFormError] = useState('')
-  const requestController = useRef<AbortController | null>(null)
+  const currentController = useRef<AbortController | null>(null)
+  const [activeController, setActiveController] = useState<AbortController | null>(null)
 
-  useEffect(() => () => requestController.current?.abort(), [])
-
-  function updateBusiness(id: string, updates: Partial<Business>) {
-    setBusinesses((current) =>
-      current.map((business) => (business.id === id ? { ...business, ...updates } : business)),
-    )
-    setFormError('')
+  function persistProject(nextTask: string, nextFiles: ProjectFiles) {
+    try {
+      saveProject(window.localStorage, { task: nextTask, files: nextFiles })
+      setPersistenceError('')
+    } catch (error) {
+      setPersistenceError(error instanceof Error ? error.message : 'Browser storage is unavailable.')
+    }
   }
 
-  function addBusiness() {
-    if (businesses.length >= 3) return
-    setBusinesses((current) => [
-      ...current,
-      { id: `business-${Date.now()}`, name: '', url: '' },
-    ])
-    setFormError('')
-  }
+  useEffect(() => () => currentController.current?.abort(), [])
 
-  function removeBusiness(id: string) {
-    setBusinesses((current) => current.filter((business) => business.id !== id))
-    setFormError('')
+  function updateTask(value: string) {
+    setTask(value)
+    persistProject(value, files)
+    if (!isBusy) {
+      setRunResult(null)
+      setRunStatus('idle')
+    }
   }
 
   async function startRun() {
     if (!task.trim()) {
-      setFormError('Add a task description before starting.')
+      setRunError('Describe the website you want to generate.')
       return
     }
 
-    const submittedBusinesses = businesses.filter(
-      (business) => business.name.trim() || business.url.trim(),
-    )
-    const invalidBusiness = submittedBusinesses.find((business) => {
-      if (!business.name.trim() || !business.url.trim()) return true
-      try {
-        const url = new URL(business.url)
-        return (url.protocol !== 'https:' && url.protocol !== 'http:')
-          || Boolean(url.username || url.password)
-      } catch {
-        return true
-      }
-    })
-    if (invalidBusiness) {
-      setFormError('Give each submitted business a name and a valid HTTP(S) website URL.')
-      return
-    }
-
-    setFormError('')
     setRunError('')
     setRunResult(null)
     setRunStatus('running')
     const controller = new AbortController()
-    requestController.current = controller
+    currentController.current = controller
+    setActiveController(controller)
 
     try {
+      const requestBody = JSON.stringify({ task: task.trim(), files })
+      if (new TextEncoder().encode(requestBody).byteLength > 512 * 1024) {
+        throw new Error('The project request exceeds the 512 KB limit.')
+      }
       const response = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          task: task.trim(),
-          businesses: submittedBusinesses.map(({ id, name, url }) => ({
-            id,
-            name: name.trim(),
-            url: url.trim(),
-          })),
-        }),
+        body: requestBody,
         signal: controller.signal,
       })
       let body: unknown
       try {
         body = await response.json()
       } catch {
-        throw new Error('The run endpoint returned invalid JSON.')
+        throw new Error('The agent endpoint returned invalid JSON.')
       }
 
       if (!response.ok) {
         const message = isRecord(body) && isRecord(body.error) && typeof body.error.message === 'string'
           ? body.error.message
-          : 'The agent run failed.'
+          : 'The website generation run failed.'
         throw new Error(message)
       }
-      if (!isAgentRunResponse(body)) {
-        throw new Error('The run endpoint returned an invalid response.')
-      }
-
-      setRunResult(body)
+      const result = parseAgentRunResponse(body)
+      setFiles(result.files)
+      persistProject(task, result.files)
+      setRunResult(result)
       setRunStatus('completed')
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         setRunStatus('cancelled')
-        setRunError('The request was cancelled. No progress or tool calls are shown unless returned by the server.')
+        setRunError('The request was cancelled. The saved project was left unchanged.')
       } else {
         setRunStatus('error')
         setRunError(error instanceof Error ? error.message : 'The agent run failed unexpectedly.')
       }
     } finally {
-      if (requestController.current === controller) requestController.current = null
+      if (currentController.current === controller) currentController.current = null
+      setActiveController((current) => current === controller ? null : current)
     }
   }
 
-  function cancelRun() {
-    requestController.current?.abort()
-  }
-
   const isBusy = runStatus === 'running'
+  const hasGeneratedSite = Boolean(files['index.html'])
+  const completedOperations = runResult?.trace.filter((item) => item.status === 'completed').length ?? 0
 
   return (
     <div className="app-shell">
-      <main className="main-shell" id="mission-control">
+      <aside className="sidebar" aria-label="Workspace navigation">
+        <a className="brand" href="#workspace">
+          <span className="brand-mark"><Bot size={16} /></span>
+          <span className="brand-name">CHAOS<span>PILOT</span></span>
+        </a>
+        <div className="workspace-switcher">
+          <span className="workspace-avatar"><Code2 size={15} /></span>
+          <span className="workspace-copy"><strong>Website workspace</strong><small>Local project</small></span>
+        </div>
+        <div className="sidebar-label">WORKSPACE</div>
+        <nav className="side-nav">
+          <a className="nav-item selected" href="#workspace"><Code2 size={15} /> Website builder<span className="nav-indicator" /></a>
+        </nav>
+        <div className="sidebar-bottom">
+          <div className="safe-card">
+            <span className="safe-icon"><Zap size={14} /></span>
+            <div><strong>Sandboxed preview</strong><p>Generated code isolated</p></div>
+            <span className="safe-dot" />
+          </div>
+        </div>
+      </aside>
+
+      <main className="main-shell" id="workspace">
+        <header className="topbar">
+          <div className="breadcrumbs"><span>Workspace</span><span className="breadcrumb-divider">/</span><strong>Website builder</strong></div>
+          <div className="topbar-right"><span className="demo-badge"><span /> LOCAL PROJECT</span></div>
+        </header>
         <div className="page-content">
           <section className="page-heading">
             <div>
-              <div className="eyebrow"><span className="eyebrow-line" /> CHAOSPILOT · WEBSITE PROPOSALS</div>
-              <h1>Start with a task<span className="heading-period">.</span></h1>
-              <p>Enter a task and up to three public business websites to get started.</p>
+              <div className="eyebrow"><span className="eyebrow-line" /> CHAOSPILOT · WEBSITE DEVELOPMENT AGENT</div>
+              <h1>Build a website<span className="heading-period">.</span></h1>
+              <p>Describe what you want. Generate a site, preview it, and keep your project in this browser.</p>
             </div>
           </section>
 
-          <div className="dashboard-grid">
-            <div className="left-column">
-              <TaskComposer
-                task={task}
-                businesses={businesses}
-                isBusy={isBusy}
-                formError={formError}
-                onTaskChange={(value) => { setTask(value); setFormError('') }}
-                onBusinessChange={updateBusiness}
-                onAddBusiness={addBusiness}
-                onRemoveBusiness={removeBusiness}
-                hasRun={runStatus !== 'idle'}
-                onStart={startRun}
-                onCancel={cancelRun}
-              />
-              <section className="run-overview panel" aria-label="Run status">
-                <div className="overview-icon"><Zap size={17} fill="currentColor" /></div>
-                <div className="overview-main">
-                  <div className="overview-title-row">
-                    <div className="overview-title">
-                      <strong>{isBusy ? 'Website Growth Agent is running' : runStatus === 'completed' ? 'Agent run complete' : runStatus === 'error' ? 'Run needs attention' : runStatus === 'cancelled' ? 'Run cancelled' : 'Ready when you are'}</strong>
-                      <span>{isBusy ? 'Waiting for the bounded Nebius agent loop to return.' : runStatus === 'completed' ? 'The answer and trace below came from the live model and registered tools.' : runStatus === 'error' ? 'The run failed before a valid result was returned.' : runStatus === 'cancelled' ? 'The run request was cancelled.' : 'Starting a run calls the configured Nebius model. No website is fetched.'}</span>
-                    </div>
-                    <span className={`run-status status-${runStatus}`}>
-                      <span className="status-dot" />{runStatus === 'running' ? 'LIVE MODEL RUNNING' : runStatus === 'completed' ? 'LIVE MODEL COMPLETE' : runStatus === 'error' ? 'ACTION NEEDED' : runStatus === 'cancelled' ? 'CANCELLED' : 'STANDING BY'}
-                    </span>
-                  </div>
+          <section className="run-overview panel" aria-label="Project run status">
+            <div className="overview-icon"><Zap size={17} fill="currentColor" /></div>
+            <div className="overview-main">
+              <div className="overview-title-row">
+                <div className="overview-title">
+                  <strong>{isBusy ? 'Website agent is working' : runStatus === 'completed' ? 'Website generated' : runStatus === 'error' ? 'Run needs attention' : runStatus === 'cancelled' ? 'Run cancelled' : hasGeneratedSite ? 'Saved website ready' : 'Ready to build'}</strong>
+                  <span>{isBusy ? 'The agent is generating files in a request-scoped project.' : runStatus === 'completed' ? runResult?.answer : runStatus === 'error' ? runError : runStatus === 'cancelled' ? 'The run request was cancelled.' : hasGeneratedSite ? 'Your project and preview were restored from browser storage.' : 'Your prompt and project files stay in this browser.'}</span>
                 </div>
-              </section>
-              <ExecutionTimeline
-                status={runStatus}
-                trace={runResult?.trace ?? []}
-              />
-              <ModelTestPanel task={task} businesses={businesses} />
-            </div>
-
-            <section className="results-section panel" aria-labelledby="results-title">
-              <div className="section-heading results-heading">
-                <div className="section-title-wrap">
-                  <span className="section-icon results-icon"><Sparkles size={16} /></span>
-                  <div><h2 id="results-title">Website Growth Agent</h2><p>{runResult ? `Nebius · ${runResult.model}` : 'Live Nebius model · website fetching disabled'}</p></div>
-                </div>
-                {runResult && <span className="results-count">{runResult.turns} MODEL TURNS</span>}
+                <span className={`run-status status-${runStatus}`}><span className="status-dot" />{runStatus === 'running' ? 'AGENT RUNNING' : runStatus === 'completed' ? 'COMPLETE' : runStatus === 'error' ? 'ACTION NEEDED' : runStatus === 'cancelled' ? 'CANCELLED' : hasGeneratedSite ? 'PROJECT SAVED' : 'STANDING BY'}</span>
               </div>
-              <div className="results-body">
-                {runStatus === 'completed' && runResult ? (
-                  <div className="results-state agent-answer">
+            </div>
+          </section>
+
+          <div className="builder-grid">
+            <ProjectEditor
+              task={task}
+              files={files}
+              selectedFile={selectedFile}
+              status={runStatus}
+              error={runError}
+              persistenceError={persistenceError}
+              onTaskChange={updateTask}
+              onFileSelect={setSelectedFile}
+              onStart={() => void startRun()}
+              onCancel={() => activeController?.abort()}
+            />
+            <div className="builder-right">
+              <WebsitePreview files={files} />
+              <section className="timeline-panel panel">
+                <div className="section-heading">
+                  <div className="section-title-wrap">
+                    <span className="section-icon timeline-icon"><Sparkles size={15} /></span>
+                    <div><h2>Execution trace</h2><p>Real project operations returned by the agent</p></div>
+                  </div>
+                  {runResult && <span className="results-count">{runResult.turns} MODEL TURNS</span>}
+                </div>
+                <ExecutionTimeline status={runStatus} trace={runResult?.trace ?? []} />
+                {runResult && (
+                  <div className="agent-result-note">
                     <strong>Agent response</strong>
                     <p>{runResult.answer}</p>
-                    <small>Live model request completed. No website was fetched. A run may make multiple model requests and use Nebius credits.</small>
-                    {runResult.activatedSkills.length > 0 && (
-                      <div className="agent-skills">
-                        <strong>Loaded skill instructions</strong>
-                        <ul>{runResult.activatedSkills.map((skill) => <li key={skill}>{skill}</li>)}</ul>
-                      </div>
-                    )}
-                  </div>
-                ) : runStatus === 'running' ? (
-                  <div className="results-state loading-state">
-                    <div className="loading-orbit"><span /><span /><span /></div>
-                    <strong>Waiting for the agent response</strong>
-                    <p>No progress percentage is available; tool calls appear only after the server returns the completed run.</p>
-                  </div>
-                ) : runStatus === 'error' ? (
-                  <div className="results-state error-state" role="alert">
-                    <span className="empty-icon error-empty-icon"><CircleAlert size={21} /></span>
-                    <strong>The run failed</strong>
-                    <p>{runError}</p>
-                    <button className="secondary-button retry-button" onClick={() => void startRun()}><RotateIcon /> Try again</button>
-                  </div>
-                ) : runStatus === 'cancelled' ? (
-                  <div className="results-state empty-state">
-                    <span className="empty-icon"><Bot size={21} /></span>
-                    <strong>Run cancelled</strong>
-                    <p>{runError}</p>
-                  </div>
-                ) : (
-                  <div className="results-state empty-state">
-                    <span className="empty-icon"><Sparkles size={20} /></span>
-                    <strong>Your response will appear here</strong>
-                    <p>Starting a task uses the configured Nebius model. Website fetching is disabled; the only registered website tool returns a mock result.</p>
-                    <span className="results-hint"><ArrowUpRight size={13} /> Live inference may use Nebius credits</span>
+                    <small>{completedOperations} successful file operation{completedOperations === 1 ? '' : 's'} · {runResult.liveModel ? `Nebius model: ${runResult.model}` : 'Local deterministic mock; no AI called.'}</small>
                   </div>
                 )}
-              </div>
-            </section>
+                {runStatus === 'error' && <p className="timeline-error" role="alert"><CircleAlert size={13} /> {runError}</p>}
+              </section>
+            </div>
           </div>
-          <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE IMPROVEMENT IDEAS</span><span>Live Nebius model <span className="footer-dot">·</span> Website fetching disabled</span></footer>
+          <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE BUILDER</span><span>Browser-local project <span className="footer-dot">·</span> Sandbox preview</span></footer>
         </div>
       </main>
     </div>
   )
-}
-
-function RotateIcon() {
-  return <span className="retry-icon"><Sparkles size={14} /></span>
 }
 
 export default App

@@ -3,7 +3,7 @@ import type {
   AgentDecision,
   AgentModel,
   AgentModelInput,
-} from './runtime'
+} from './runtime.ts'
 
 const maxResponseBytes = 64 * 1024
 const modelTimeoutMs = 30_000
@@ -80,17 +80,15 @@ async function readTextAtMost(
 }
 
 function toProviderMessages(input: AgentModelInput): Array<Record<string, unknown>> {
-  const businesses = input.businesses.map(({ id, name, url }) => ({ id, name, url }))
   const messages: Array<Record<string, unknown>> = [
     {
       role: 'system',
       content: [
         input.instructions,
-        `Businesses supplied by the user (context only; no website has been fetched): ${JSON.stringify(businesses)}`,
         input.availableSkills.length > 0
           ? `Optional registered skills are available: ${input.availableSkills.map(({ name, description }) => `${name}: ${description}`).join('; ')}. If a skill is useful, request it with activate_skills before continuing. Skill activation loads instructions only; it is not an executable capability.`
           : '',
-        'Use only the registered tools shown in this request. Do not claim to have visited a website. The website inspection tool is mock-only and returns no page evidence. The runtime supplies actual tool results on later turns.',
+        'Use only the registered tools shown in this request. The runtime supplies actual tool results on later turns.',
       ].filter(Boolean).join('\n\n'),
     },
     ...input.activeSkills.map((skill) => ({
@@ -129,6 +127,30 @@ function toProviderMessages(input: AgentModelInput): Array<Record<string, unknow
   }
 
   return messages
+}
+
+function fieldNames(value: unknown): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return '(not an object)'
+  const names = Object.keys(value)
+    .filter((name) => /^[a-zA-Z0-9_.-]{1,40}$/.test(name))
+    .slice(0, 8)
+  return names.length > 0 ? names.join(', ') : '(none)'
+}
+
+function responseShape(value: unknown): string {
+  const root = typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+  const choices = root?.choices
+  const firstChoice = Array.isArray(choices) ? choices[0] : undefined
+  const choice = typeof firstChoice === 'object' && firstChoice !== null && !Array.isArray(firstChoice)
+    ? firstChoice as Record<string, unknown>
+    : undefined
+  return [
+    `response fields: ${fieldNames(value)}`,
+    `first choice fields: ${fieldNames(firstChoice)}`,
+    `message fields: ${fieldNames(choice?.message)}`,
+  ].join('; ')
 }
 
 function createProviderTools(input: AgentModelInput): Array<Record<string, unknown>> {
@@ -280,7 +302,11 @@ export function createNebiusModel(options: NebiusModelOptions): AgentModel {
 
       const completion = completionSchema.safeParse(responseBody)
       if (!completion.success) {
-        throw new NebiusModelError(502, 'invalid_upstream_response', 'Nebius returned an unexpected response format.')
+        throw new NebiusModelError(
+          502,
+          'invalid_upstream_response',
+          `Nebius returned an unexpected Chat Completions response format (${responseShape(responseBody)}).`,
+        )
       }
 
       const message = completion.data.choices[0].message

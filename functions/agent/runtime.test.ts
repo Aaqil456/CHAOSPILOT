@@ -7,8 +7,7 @@ import {
   type AgentTool,
   type AgentSkill,
 } from './runtime.ts'
-import { mockModel } from './mockModel.ts'
-import { inspectWebsiteTool } from './tools.ts'
+import { ProjectWorkspace } from './projectFiles.ts'
 
 const countTool: AgentTool = {
   name: 'count',
@@ -24,6 +23,7 @@ const baseOptions = {
   businesses: [],
   instructions: 'Test instructions.',
   tools: [countTool],
+  workspace: new ProjectWorkspace({}),
 }
 
 test('returns the model final answer without inventing tool calls', async () => {
@@ -233,65 +233,4 @@ test('loads only registered skills requested by the model and supplies their con
   assert.equal(secondTurnSkillText, skill.content)
   assert.deepEqual(secondTurnAvailableNames, [skill.name])
   assert.deepEqual(result.activatedSkills, [skill.name])
-})
-
-test('mock selector requests only skills matching the supplied task and available registry', async () => {
-  const input = {
-    task: 'Compare these competitors and draft landing page copy.',
-    businesses: [],
-    messages: [{ role: 'user' as const, content: 'Compare these competitors and draft landing page copy.' }],
-    tools: [],
-    instructions: 'Mock agent instructions.',
-    availableSkills: [
-      { name: 'competitor-research', description: 'Compare supplied competitors.' },
-      { name: 'content-generation', description: 'Draft requested content.' },
-      { name: 'website-analysis', description: 'Analyze website evidence.' },
-    ],
-    activeSkills: [],
-  }
-
-  const decision = await mockModel.decide(input)
-  assert.deepEqual(decision, {
-    type: 'activate_skills',
-    skillNames: ['competitor-research', 'content-generation'],
-  })
-})
-
-test('mock website inspection returns no real-world evidence and makes no fetch', async () => {
-  const result = await inspectWebsiteTool.execute(
-    { businessId: 'business-1' },
-    { businesses: [{ id: 'business-1', name: 'Example Co', url: 'https://example.com' }] },
-  )
-
-  assert.deepEqual(result, {
-    mode: 'mock',
-    inspected: false,
-    businessId: 'business-1',
-    businessName: 'Example Co',
-    submittedUrl: 'https://example.com',
-    evidence: [],
-    message: 'Mock result only. No website request was made and no page evidence is available.',
-  })
-})
-
-test('mock website task activates a skill, sees the mock tool result, then returns an honest limitation', async () => {
-  const result = await runAgent({
-    ...baseOptions,
-    task: 'Inspect this website and tell me what it says.',
-    businesses: [{ id: 'business-1', name: 'Example Co', url: 'https://example.com' }],
-    tools: [inspectWebsiteTool],
-    skills: [{
-      name: 'website-inspection',
-      description: 'Inspect supplied website evidence.',
-      content: 'Use only actual page evidence.',
-    }],
-    model: mockModel,
-  })
-
-  assert.deepEqual(result.activatedSkills, ['website-inspection'])
-  assert.equal(result.trace.length, 1)
-  assert.equal(result.trace[0]?.name, 'inspect_website')
-  assert.equal(result.trace[0]?.status, 'completed')
-  assert.match(result.trace[0]?.output ?? '', /"evidence":\[\]/)
-  assert.match(result.answer, /no page evidence/)
 })

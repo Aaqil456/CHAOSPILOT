@@ -1,3 +1,5 @@
+import type { ProjectFiles } from '../functions/agent/projectFiles'
+
 export type RunStatus = 'idle' | 'running' | 'completed' | 'error' | 'cancelled'
 
 export type Business = {
@@ -31,14 +33,13 @@ export type AgentToolTrace = {
 }
 
 export type AgentRunResponse = {
-  mode: 'live'
-  agentName: 'Website Growth Agent'
-  liveModel: true
-  liveWebsiteFetch: false
+  mode: 'live' | 'mock'
+  agentName: 'ChaosPilot Website Agent'
+  liveModel: boolean
   model: string
   answer: string
+  files: ProjectFiles
   trace: AgentToolTrace[]
-  activatedSkills: string[]
   turns: number
   stopReason: 'final' | 'turn_limit' | 'tool_call_limit'
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { ProjectWorkspace } from './projectFiles.ts'
 
 export type AgentMessage =
   | { role: 'user'; content: string }
@@ -21,6 +22,7 @@ export type AgentToolTrace = {
 
 export type AgentToolContext = {
   businesses: Array<{ id: string; name: string; url: string }>
+  workspace: ProjectWorkspace
 }
 
 export type AgentTool = {
@@ -76,13 +78,14 @@ export type RunAgentOptions = {
   tools: AgentTool[]
   instructions: string
   skills?: AgentSkill[]
+  workspace: ProjectWorkspace
   maxTurns?: number
   maxToolCalls?: number
 }
 
 const defaultMaxTurns = 8
-const defaultMaxToolCalls = 6
-const toolResultLimit = 8_000
+const defaultMaxToolCalls = 12
+const toolResultLimit = 128 * 1024
 
 function serialize(value: unknown): string {
   const encoded = JSON.stringify(value) ?? 'null'
@@ -192,6 +195,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
           try {
             result = serialize(await tool.execute(parsed.data, {
               businesses: options.businesses,
+              workspace: options.workspace,
             }))
             status = 'completed'
           } catch (error) {
