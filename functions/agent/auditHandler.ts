@@ -8,7 +8,6 @@ import { readTextAtMost } from './http.ts'
 import { auditAgentInstructions } from './instructions.generated.ts'
 import { selectModel, type ModelEnv } from './modelConfig.ts'
 import { NebiusModelError } from './nebiusModel.ts'
-import { ProjectWorkspace } from './projectFiles.ts'
 import { AgentCancelledError, runAgent } from './runtime.ts'
 
 export interface PagesContext {
@@ -62,7 +61,6 @@ export async function handleAudit(
     request,
     mockModel: auditMockModel,
     defaultMaxTokens,
-    maxTokensVariable: 'NEBIUS_AUDIT_MAX_TOKENS',
     signal: controller.signal,
   })
   if (!selection.ok) return errorResponse(selection.status, selection.code, selection.message)
@@ -106,7 +104,6 @@ export async function handleAudit(
         model: selection.model,
         tools,
         instructions: auditAgentInstructions,
-        workspace: new ProjectWorkspace({}),
         maxTurns: auditMaxTurns,
         maxToolCalls: auditMaxToolCalls,
         signal: controller.signal,

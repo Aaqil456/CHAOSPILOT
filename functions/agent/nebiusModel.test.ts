@@ -3,7 +3,6 @@ import test from 'node:test'
 import { createNebiusModel } from './nebiusModel.ts'
 import { runAgent } from './runtime.ts'
 import type { AgentModelInput } from './runtime.ts'
-import { ProjectWorkspace } from './projectFiles.ts'
 import { z } from 'zod'
 
 const modelInput: AgentModelInput = {
@@ -137,7 +136,6 @@ test('passes real tool output back in the next mocked Nebius model request', asy
         return { evidence: `Result for ${parsed.query}` }
       },
     }],
-    workspace: new ProjectWorkspace({}),
   })
 
   assert.equal(result.answer, 'I used the returned tool result.')

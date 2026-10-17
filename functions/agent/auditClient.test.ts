@@ -105,3 +105,33 @@ test('history keeps valid finished runs, newest first, and survives a full stora
   assert.equal(saveHistory(tinyStorage, Array.from({ length: maxHistoryEntries + 2 }, (_, index) => ({ ...run, id: `r${index}` }))), true)
   assert.ok(writes > 1)
 })
+
+import { escapeHtml, exportFileName, proposalAsHtml, proposalAsText } from '../../src/audit/exportProposal.ts'
+
+const exportBusiness = { id: 'b1', name: 'Kopi & <Co>', url: 'https://kopicorner.com/' }
+const exportProposalValue = {
+  businessId: 'b1',
+  summary: 'Summary with <b>markup</b> & "quotes".',
+  findings: [{ title: '<script>alert(1)</script>', evidence: 'metaDescription: null', recommendation: 'Add one <img src=x onerror=alert(1)>.', impact: 'high' as const }],
+  emailSubject: 'Ideas for "Kopi"',
+  emailBody: 'Hello <team>,\n\nFirst paragraph.\nSecond line.\n\nThe ChaosPilot team',
+}
+
+test('HTML export escapes all model-written text and keeps paragraphs', () => {
+  const html = proposalAsHtml(exportProposalValue, exportBusiness)
+  assert.doesNotMatch(html, /<script|<img|<b>|<team>/i)
+  assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/)
+  assert.match(html, /Kopi &amp; &lt;Co&gt;/)
+  assert.match(html, /<p>First paragraph\.<br>Second line\.<\/p>/)
+  assert.match(html, /Draft proposal — not sent/)
+  assert.match(html, /@media print/)
+  assert.equal(escapeHtml(`&<>"'`), '&amp;&lt;&gt;&quot;&#39;')
+})
+
+test('text export and file names are predictable', () => {
+  const text = proposalAsText(exportProposalValue, exportBusiness)
+  assert.match(text, /1\. \[HIGH\] <script>alert\(1\)<\/script>/)
+  assert.match(text, /Subject: Ideas for "Kopi"/)
+  assert.equal(exportFileName('Kopi & <Co>', 'html'), 'kopi-co-proposal.html')
+  assert.equal(exportFileName('!!!', 'pdf'), 'business-proposal.pdf')
+})

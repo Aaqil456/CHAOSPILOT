@@ -3,7 +3,6 @@ import test from 'node:test'
 import { auditStreamEventSchema, type AuditStreamEvent } from './auditSchema.ts'
 import { AuditRunState, createAuditTools } from './auditTools.ts'
 import { handleAudit } from './auditHandler.ts'
-import { ProjectWorkspace } from './projectFiles.ts'
 import { runAgent, type AgentModel } from './runtime.ts'
 
 const homepage = `<!doctype html><html lang="en"><head><title>Kopi Corner</title></head>
@@ -26,7 +25,7 @@ function toolMap(state: AuditRunState) {
   return new Map(createAuditTools({ state, fetchImplementation: siteFetch }).map((tool) => [tool.name, tool]))
 }
 
-const context = { businesses, workspace: new ProjectWorkspace({}) }
+const context = { businesses }
 
 const validProposal = {
   business_id: 'b1',
@@ -99,7 +98,6 @@ test('invalid proposal arguments are rejected with field-level issues the model 
     model,
     tools: createAuditTools({ state, fetchImplementation: siteFetch }),
     instructions: 'Test',
-    workspace: new ProjectWorkspace({}),
   })
   assert.equal(result.trace[1].status, 'error')
   assert.match(result.answer, /findings\.0\.impact/)
@@ -212,7 +210,7 @@ test('save_proposal accepts findings sent as a JSON string, then validates stric
       return { type: 'final', content: 'done' }
     },
   }
-  const result = await runAgent({ task: 'Audit', businesses, model, tools, instructions: 'Test', workspace: new ProjectWorkspace({}) })
+  const result = await runAgent({ task: 'Audit', businesses, model, tools, instructions: 'Test' })
   assert.deepEqual(result.trace.map((step) => step.status), ['completed', 'completed', 'error'])
   assert.equal(state.proposals.get('b1')?.findings[0].evidence, 'metaDescription: null')
 })
@@ -238,7 +236,6 @@ test('audit run reminds the model to save a proposal it only wrote as text', asy
     model,
     tools: createAuditTools({ state, fetchImplementation: siteFetch }),
     instructions: 'Test',
-    workspace: new ProjectWorkspace({}),
     reviewFinal: () => state.proposals.has('b1') ? null : 'Not finished: call save_proposal for Kopi Corner (b1).',
   })
   assert.equal(result.answer, 'Saved.')

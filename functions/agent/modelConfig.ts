@@ -4,7 +4,6 @@ import type { AgentModel } from './runtime.ts'
 export interface ModelEnv {
   MOCK_MODE?: string
   NEBIUS_API_KEY?: string
-  NEBIUS_MAX_TOKENS?: string
   NEBIUS_AUDIT_MAX_TOKENS?: string
   NEBIUS_MODEL?: string
 }
@@ -26,8 +25,6 @@ export function selectModel(options: {
   request: Request
   mockModel: AgentModel
   defaultMaxTokens: number
-  /** Environment variable that overrides defaultMaxTokens for this endpoint. */
-  maxTokensVariable?: 'NEBIUS_MAX_TOKENS' | 'NEBIUS_AUDIT_MAX_TOKENS'
   signal?: AbortSignal
 }): ModelSelection {
   const { env, request } = options
@@ -35,15 +32,14 @@ export function selectModel(options: {
     return { ok: true, model: options.mockModel, modelName: 'local-deterministic-mock', mode: 'mock' }
   }
 
-  const maxTokensVariable = options.maxTokensVariable ?? 'NEBIUS_MAX_TOKENS'
-  const configuredMaxTokens = env[maxTokensVariable]?.trim()
+  const configuredMaxTokens = env.NEBIUS_AUDIT_MAX_TOKENS?.trim()
   const maxTokens = configuredMaxTokens ? Number(configuredMaxTokens) : options.defaultMaxTokens
   if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > maxAllowedTokens) {
     return {
       ok: false,
       status: 500,
       code: 'invalid_token_limit',
-      message: `${maxTokensVariable} must be an integer between 1 and ${maxAllowedTokens}.`,
+      message: `NEBIUS_AUDIT_MAX_TOKENS must be an integer between 1 and ${maxAllowedTokens}.`,
     }
   }
 

@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import type { ProjectWorkspace } from './projectFiles.ts'
 
 export type AgentMessage =
   | { role: 'user'; content: string }
@@ -28,7 +27,6 @@ export type AgentEvent =
 
 export type AgentToolContext = {
   businesses: Array<{ id: string; name: string; url: string }>
-  workspace: ProjectWorkspace
 }
 
 export type AgentTool = {
@@ -86,7 +84,6 @@ export type RunAgentOptions = {
   tools: AgentTool[]
   instructions: string
   skills?: AgentSkill[]
-  workspace: ProjectWorkspace
   maxTurns?: number
   maxToolCalls?: number
   onEvent?: (event: AgentEvent) => void
@@ -244,10 +241,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentRunResult
           status = 'error'
         } else {
           try {
-            result = serialize(await tool.execute(parsed.data, {
-              businesses: options.businesses,
-              workspace: options.workspace,
-            }))
+            result = serialize(await tool.execute(parsed.data, { businesses: options.businesses }))
             status = 'completed'
           } catch (error) {
             result = serialize({

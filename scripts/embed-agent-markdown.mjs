@@ -2,7 +2,6 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const sources = [
-  ['agentInstructions', '../functions/agent/AGENT.md'],
   ['auditAgentInstructions', '../functions/agent/AUDIT_AGENT.md'],
   ['websiteInspection', '../functions/agent/skills/website-inspection/SKILL.md'],
   ['competitorResearch', '../functions/agent/skills/competitor-research/SKILL.md'],

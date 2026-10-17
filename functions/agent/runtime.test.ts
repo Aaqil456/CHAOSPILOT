@@ -7,7 +7,6 @@ import {
   type AgentTool,
   type AgentSkill,
 } from './runtime.ts'
-import { ProjectWorkspace } from './projectFiles.ts'
 
 const countTool: AgentTool = {
   name: 'count',
@@ -23,7 +22,6 @@ const baseOptions = {
   businesses: [],
   instructions: 'Test instructions.',
   tools: [countTool],
-  workspace: new ProjectWorkspace({}),
 }
 
 test('returns the model final answer without inventing tool calls', async () => {

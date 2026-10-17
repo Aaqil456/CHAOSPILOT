@@ -6,9 +6,7 @@ ChaosPilot is an AI workflow agent that turns a natural-language request into an
 2. An NVIDIA model on Nebius Token Factory decides which allowlisted tools to call.
 3. A Cloudflare Pages Function runs those tools: it fetches each homepage (and up to two linked pages), extracts evidence, and validates every argument with Zod.
 4. Each step streams to the browser as it happens, with its status, inputs, outputs, errors and timing.
-5. The model writes a proposal for each business from the inspected evidence. Every finding cites the value it relies on, and you can edit, copy or download the proposals. Nothing is sent to the businesses.
-
-A secondary **website builder** workflow (`#builder`) generates a small HTML/CSS/JS site in a sandboxed preview.
+5. The model writes a proposal for each business from the inspected evidence. Every finding cites the value it relies on, and you can edit, copy, or download each proposal as TXT, HTML or PDF. PDF export opens the browser's print dialog; choose "Save as PDF" there (no PDF library is bundled). Nothing is sent to the businesses.
 
 ## Setup
 
@@ -21,8 +19,7 @@ Create `.dev.vars` (or `.env`) in the project root for local development:
 ```ini
 NEBIUS_API_KEY=your-nebius-api-key
 NEBIUS_MODEL=nvidia/Nemotron-3_5-Lightning
-NEBIUS_AUDIT_MAX_TOKENS=3000   # optional; website audit output limit (default 3000, max 4096)
-NEBIUS_MAX_TOKENS=600          # optional; website builder output limit (default 600, max 4096)
+NEBIUS_AUDIT_MAX_TOKENS=3000   # optional; output limit per model call (default 3000, max 4096)
 MOCK_MODE=false                # true = local mock without AI calls (localhost only)
 ```
 
@@ -49,7 +46,7 @@ Open http://localhost:8788, click **Load sample task**, then **Start run**.
 ## Testing
 
 ```sh
-npm test         # 54 Node tests: runtime, Nebius adapter, URL safety, fetching, extraction, tools, /api/audit, client state
+npm test         # Node tests: runtime, Nebius adapter, URL safety, fetching, extraction, tools, /api/audit, client state
 npm run lint
 npm run build
 ```
@@ -90,7 +87,3 @@ The tests use stubbed `fetch`; they do not call Nebius or the public internet. A
 2. Build command: `npm run build`. Output directory: `dist`. API routes are discovered under `functions/`.
 3. In **Settings → Variables and Secrets**, add `NEBIUS_API_KEY` as a **secret**, and add `NEBIUS_MODEL` (plus the optional token limits) as variables. Do not set `MOCK_MODE` in production.
 4. After deploying, run the sample task on the deployed URL and confirm the run status shows *LIVE NEBIUS MODEL*.
-
-## Website builder (secondary workflow)
-
-`POST /api/run` asks the model to create `index.html`, `styles.css` and `script.js` in a request-scoped workspace. The files are saved in `localStorage` and previewed in a sandboxed iframe whose CSP blocks network access. Editing existing projects is not implemented yet.
