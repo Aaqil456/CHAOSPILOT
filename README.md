@@ -8,6 +8,29 @@ ChaosPilot is an AI workflow agent that turns a natural-language request into an
 4. Each step streams to the browser as it happens, with its status, inputs, outputs, errors and timing.
 5. The model writes a proposal for each business from the inspected evidence. Every finding cites the value it relies on, and you can edit, copy, or download each proposal as TXT, HTML or PDF. PDF export opens the browser's print dialog; choose "Save as PDF" there (no PDF library is bundled). Nothing is sent to the businesses.
 
+**Live demo:** https://chaospilot.pages.dev (click **Load sample task**, then **Start run**). **License:** MIT.
+
+## How it uses NVIDIA Nemotron and Nebius
+
+- **Model:** `nvidia/Nemotron-3_5-Lightning`, NVIDIA's open-weights model, served through **Nebius Token Factory** (`https://api.tokenfactory.nebius.com/v1/chat/completions`).
+- **What the model does:** it is the agent's decision-maker. On every turn it chooses a tool (`inspect_website`, `inspect_page` or `save_proposal`) through native function calling, reads the real tool results, and finally writes each business's findings and email draft. Without the model nothing is planned or written.
+- **What the model does not do:** it cannot browse, run code, or reach any URL the user did not submit. The server executes only three allowlisted tools and validates every argument and every proposal with Zod.
+- **Why Token Factory helped:** the loop makes about seven sequential model calls per three-site audit (one per tool step, plus a final summary). A three-site run finished in about 13 seconds end to end, including the real website fetches, which keeps the live timeline responsive.
+- **Other Nebius services:** none. The app runs on Cloudflare Pages Functions and calls Token Factory over HTTPS. Nebius Serverless Endpoints and Jobs are not used.
+- **Mock mode** (`MOCK_MODE=true`, localhost only) is a development convenience. It runs the real tools but not the model, and every output is labelled `[MOCK]`. It is never used on the deployed site.
+
+## What was built
+
+This project was started on 2026-10-13, inside the hackathon's submission period, so it is entirely new work for this hackathon. Its main parts:
+
+- Server-side website fetching with SSRF protections (public domains only, validated redirects, timeouts, size and request limits) and HTML evidence extraction.
+- The `/api/audit` endpoint that streams each agent step to the browser, with cancellation.
+- Three allowlisted tools with strict schemas, per-business page limits, and a check that stops the model from finishing without saving proposals.
+- Fixes found only by running against the real model: Nebius returning `tool_calls: null`, output truncation, and models sending JSON arrays as strings.
+- The audit UI: live timeline, evidence panel, editable proposals, TXT/HTML/PDF export, run history, and a sample task.
+
+An earlier experiment in the same repository (a website generator) was dropped to focus on the audit agent.
+
 ## Setup
 
 ```sh
