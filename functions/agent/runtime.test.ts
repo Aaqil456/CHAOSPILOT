@@ -234,3 +234,24 @@ test('loads only registered skills requested by the model and supplies their con
   assert.deepEqual(secondTurnAvailableNames, [skill.name])
   assert.deepEqual(result.activatedSkills, [skill.name])
 })
+
+test('reviewFinal sends a bounded reminder instead of finishing early', async () => {
+  let decisions = 0
+  const seen: string[] = []
+  const result = await runAgent({
+    ...baseOptions,
+    model: {
+      async decide(input) {
+        decisions += 1
+        const last = input.messages.at(-1)
+        if (last?.role === 'user') seen.push(last.content)
+        return { type: 'final', content: `answer ${decisions}` }
+      },
+    },
+    reviewFinal: () => 'Please save the result first.',
+    maxFinalReminders: 2,
+  })
+  assert.equal(decisions, 3)
+  assert.equal(result.answer, 'answer 3')
+  assert.deepEqual(seen.slice(1), ['Please save the result first.', 'Please save the result first.'])
+})

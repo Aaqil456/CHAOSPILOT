@@ -158,7 +158,7 @@ test('rejects malformed provider responses without a success-shaped fallback', a
     maxTokens: 512,
     fetchImplementation: async () => Response.json({
       id: 'response-id',
-      choices: [{ message: { content: 'private response text', tool_calls: null } }],
+      choices: [{ message: { content: 'private response text', tool_calls: 'not-a-list' } }],
     }),
   })
 
@@ -184,6 +184,39 @@ test('reports upstream tool-calling errors without exposing response bodies', as
     assert.ok(error instanceof Error)
     assert.match(error.message, /HTTP 400/)
     assert.doesNotMatch(error.message, /sensitive upstream detail|test-secret/)
+    return true
+  })
+})
+
+test('treats tool_calls: null with text content as a final answer (Nebius response shape)', async () => {
+  const model = createNebiusModel({
+    apiKey: 'server-key',
+    model: 'nvidia/test-model',
+    maxTokens: 600,
+    fetchImplementation: async () => completion({
+      role: 'assistant',
+      content: 'All proposals are saved.',
+      tool_calls: null,
+      function_call: null,
+      reasoning: 'internal reasoning text',
+    }),
+  })
+  assert.deepEqual(await model.decide(modelInput), { type: 'final', content: 'All proposals are saved.' })
+})
+
+test('reports truncated model output instead of treating it as a final answer', async () => {
+  const model = createNebiusModel({
+    apiKey: 'server-key',
+    model: 'nvidia/test-model',
+    maxTokens: 600,
+    fetchImplementation: async () => Response.json({
+      choices: [{ finish_reason: 'length', message: { role: 'assistant', content: '<tool_call>\n<function=save_proposal>…', tool_calls: null } }],
+    }),
+  })
+  await assert.rejects(model.decide(modelInput), (error: unknown) => {
+    assert.ok(error instanceof Error)
+    assert.equal((error as { code?: string }).code, 'output_truncated')
+    assert.match(error.message, /600 tokens/)
     return true
   })
 })

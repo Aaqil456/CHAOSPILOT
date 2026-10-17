@@ -1,4 +1,4 @@
-import { CircleAlert, Globe2, LoaderCircle, Plus, Rocket, X } from 'lucide-react'
+import { CircleAlert, FlaskConical, Globe2, LoaderCircle, Plus, Rocket, RotateCcw, X } from 'lucide-react'
 import type { Business } from '../types'
 
 type TaskComposerProps = {
@@ -13,6 +13,8 @@ type TaskComposerProps = {
   onRemoveBusiness: (id: string) => void
   onStart: () => void
   onCancel: () => void
+  onLoadSample: () => void
+  onRetry?: () => void
 }
 
 export function TaskComposer({
@@ -27,6 +29,8 @@ export function TaskComposer({
   onRemoveBusiness,
   onStart,
   onCancel,
+  onLoadSample,
+  onRetry,
 }: TaskComposerProps) {
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -40,7 +44,9 @@ export function TaskComposer({
           <span className="section-icon composer-icon"><Rocket size={15} /></span>
           <div><h2 id="composer-title">Your task</h2><p>Describe what you want to accomplish</p></div>
         </div>
-        <span className="sample-label"><span /> LIVE AGENT</span>
+        <button type="button" className="sample-button" onClick={onLoadSample} disabled={isBusy}>
+          <FlaskConical size={13} /> Load sample task
+        </button>
       </div>
 
       <form className="composer-form" onSubmit={submit}>
@@ -105,16 +111,21 @@ export function TaskComposer({
 
         {formError && <div className="form-error" role="alert"><CircleAlert size={15} />{formError}</div>}
         <div className="composer-actions">
-          <div className="privacy-note"><span className="privacy-icon"><Globe2 size={13} /></span><span>HTTP(S) URLs <span className="note-separator">·</span> No site requests</span></div>
+          <div className="privacy-note"><span className="privacy-icon"><Globe2 size={13} /></span><span>Public HTTP(S) sites <span className="note-separator">·</span> Fetched server-side</span></div>
           {isBusy ? (
             <button type="button" className="cancel-button" onClick={onCancel}><span className="cancel-square" /> Cancel run</button>
           ) : (
+            <div className="composer-buttons">
+            {hasRun && onRetry && (
+              <button type="button" className="secondary-button" onClick={onRetry}><RotateCcw size={13} /> Retry</button>
+            )}
             <button type="submit" className="start-button">
-              <Rocket size={15} /> {hasRun ? 'Start another task' : 'Start live run'} <span className="button-arrow">↗</span>
+              <Rocket size={15} /> {hasRun ? 'Run with these inputs' : 'Start run'} <span className="button-arrow">↗</span>
             </button>
+            </div>
           )}
         </div>
-        <div className="demo-error-hint">Uses the configured Nebius model and may use credits. Website fetching is disabled.</div>
+        <div className="demo-error-hint">Live runs call the configured NVIDIA model through Nebius and may use credits. Only the homepage and up to two same-site pages per business are fetched. Nothing is sent to the businesses.</div>
       </form>
     </section>
   )

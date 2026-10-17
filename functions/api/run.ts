@@ -1,21 +1,16 @@
 import { z } from 'zod'
 import { agentInstructions } from '../agent/instructions.generated.ts'
 import { mockModel } from '../agent/mockModel.ts'
-import { createNebiusModel, NebiusModelError } from '../agent/nebiusModel.ts'
+import { readTextAtMost } from '../agent/http.ts'
+import { selectModel, type ModelEnv } from '../agent/modelConfig.ts'
+import { NebiusModelError } from '../agent/nebiusModel.ts'
 import { ProjectWorkspace, projectFilesSchema } from '../agent/projectFiles.ts'
-import { runAgent, type AgentModel } from '../agent/runtime.ts'
+import { runAgent } from '../agent/runtime.ts'
 import { agentTools } from '../agent/tools.ts'
-
-interface Env {
-  MOCK_MODE?: string
-  NEBIUS_API_KEY?: string
-  NEBIUS_MAX_TOKENS?: string
-  NEBIUS_MODEL?: string
-}
 
 interface PagesContext {
   request: Request
-  env: Env
+  env: ModelEnv
 }
 
 const requestSchema = z.object({
@@ -25,44 +20,9 @@ const requestSchema = z.object({
 
 const maxRequestBytes = 512 * 1024
 const defaultMaxTokens = 600
-const maxAllowedTokens = 2048
-
-async function readTextAtMost(
-  body: ReadableStream<Uint8Array> | null,
-  limit: number,
-): Promise<string | null> {
-  if (!body) return ''
-
-  const reader = body.getReader()
-  const chunks: Uint8Array[] = []
-  let byteLength = 0
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    byteLength += value.byteLength
-    if (byteLength > limit) {
-      await reader.cancel()
-      return null
-    }
-    chunks.push(value)
-  }
-
-  const bytes = new Uint8Array(byteLength)
-  let offset = 0
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return new TextDecoder().decode(bytes)
-}
 
 function errorResponse(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message } }, { status })
-}
-
-function isLocalRequest(request: Request): boolean {
-  const hostname = new URL(request.url).hostname
-  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(hostname)
 }
 
 export const onRequestPost = async ({ request, env }: PagesContext): Promise<Response> => {
@@ -92,39 +52,10 @@ export const onRequestPost = async ({ request, env }: PagesContext): Promise<Res
     )
   }
 
-  const useLocalMock = env.MOCK_MODE === 'true' && isLocalRequest(request)
-  const apiKey = env.NEBIUS_API_KEY?.trim()
-  const modelId = env.NEBIUS_MODEL?.trim()
-  const configuredMaxTokens = env.NEBIUS_MAX_TOKENS?.trim()
-  const maxTokens = configuredMaxTokens ? Number(configuredMaxTokens) : defaultMaxTokens
-  let model: AgentModel
-  let responseModel: string
-  if (useLocalMock) {
-    model = mockModel
-    responseModel = 'local-deterministic-mock'
-  } else {
-    if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > maxAllowedTokens) {
-      return errorResponse(
-        500,
-        'invalid_token_limit',
-        `NEBIUS_MAX_TOKENS must be an integer between 1 and ${maxAllowedTokens}.`,
-      )
-    }
-    if (!apiKey || !modelId) {
-      return errorResponse(
-        503,
-        'credentials_missing',
-        'Configure NEBIUS_API_KEY and NEBIUS_MODEL on the server before running the live agent.',
-      )
-    }
-    model = createNebiusModel({
-      apiKey,
-      model: modelId,
-      maxTokens,
-      signal: request.signal,
-    })
-    responseModel = modelId
-  }
+  const selection = selectModel({ env, request, mockModel, defaultMaxTokens })
+  if (!selection.ok) return errorResponse(selection.status, selection.code, selection.message)
+  const useLocalMock = selection.mode === 'mock'
+  const { model, modelName: responseModel } = selection
 
   try {
     const result = await runAgent({

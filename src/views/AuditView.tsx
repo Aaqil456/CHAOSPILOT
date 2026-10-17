@@ -1,0 +1,283 @@
+import { useEffect, useRef, useState } from 'react'
+import { Bot, CircleAlert, FileText, History, Search, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react'
+import { auditRequestSchema, type AuditRequest, type Proposal } from '../../functions/agent/auditSchema'
+import { AuditTimeline } from '../components/AuditTimeline'
+import { EvidencePanel } from '../components/EvidencePanel'
+import { ProposalCard } from '../components/ProposalCard'
+import { TaskComposer } from '../components/TaskComposer'
+import { loadHistory, saveHistory, upsertRun } from '../audit/auditHistory'
+import { applyAuditEvent, createRun, finishRunningSteps, streamAudit, updateProposal, type AuditRun } from '../audit/auditRun'
+import type { Business } from '../types'
+
+const defaultTask = 'Review these websites and find practical improvements that would help each business win more customers. Draft a short, friendly proposal for each one.'
+
+const sampleTask = {
+  task: 'Review these websites and find practical improvements that would help each organisation attract and convert more visitors. Draft a short, friendly proposal for each one.',
+  businesses: [
+    { name: 'Berkshire Hathaway', url: 'https://www.berkshirehathaway.com' },
+    { name: 'CERN First Website', url: 'https://info.cern.ch' },
+    { name: 'Example Domain', url: 'https://example.com' },
+  ],
+}
+
+let businessCounter = 0
+function newBusiness(name = '', url = ''): Business {
+  businessCounter += 1
+  return { id: `business-${businessCounter}`, name, url }
+}
+
+function runId(): string {
+  return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `run-${Date.now()}`
+}
+
+function describeIssue(path: PropertyKey[], message: string): string {
+  if (path[0] === 'businesses' && typeof path[1] === 'number') {
+    const field = path[2] === 'url' ? 'website URL' : path[2] === 'name' ? 'name' : 'details'
+    return `Business ${path[1] + 1} ${field}: ${message}`
+  }
+  if (path[0] === 'task') return 'Describe the task (up to 2,000 characters).'
+  return message
+}
+
+function formatTime(iso: string): string {
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+export function AuditView() {
+  const [task, setTask] = useState(defaultTask)
+  const [businesses, setBusinesses] = useState<Business[]>(() => [newBusiness()])
+  const [formError, setFormError] = useState('')
+  const [run, setRun] = useState<AuditRun | null>(null)
+  const [history, setHistory] = useState<AuditRun[]>(() => loadHistory(window.localStorage))
+  const controllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => () => controllerRef.current?.abort(), [])
+
+  const isBusy = run?.status === 'running'
+
+  function remember(nextRun: AuditRun) {
+    setHistory((current) => {
+      const next = upsertRun(current, nextRun)
+      saveHistory(window.localStorage, next)
+      return next
+    })
+  }
+
+  function setInputs(request: AuditRequest) {
+    setTask(request.task)
+    setBusinesses(request.businesses.map((business) => newBusiness(business.name, business.url)))
+    setFormError('')
+  }
+
+  async function start(request?: AuditRequest) {
+    if (isBusy) return
+    let auditRequest = request
+    if (!auditRequest) {
+      const parsed = auditRequestSchema.safeParse({
+        task,
+        businesses: businesses
+          .filter((business) => business.name.trim() || business.url.trim())
+          .map((business) => ({ name: business.name, url: business.url })),
+      })
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0]
+        setFormError(issue?.path[0] === 'businesses' && issue.path.length === 1
+          ? 'Add at least one business with a name and public website URL (maximum three).'
+          : describeIssue(issue?.path ?? [], issue?.message ?? 'Check the task and business details.'))
+        return
+      }
+      auditRequest = parsed.data
+    }
+
+    setFormError('')
+    const controller = new AbortController()
+    controllerRef.current = controller
+    let current = createRun(auditRequest, runId(), new Date().toISOString())
+    setRun(current)
+
+    try {
+      await streamAudit(auditRequest, {
+        signal: controller.signal,
+        onEvent: (event) => {
+          current = applyAuditEvent(current, event)
+          setRun(current)
+        },
+      })
+    } catch (error) {
+      if (controller.signal.aborted) {
+        current = { ...finishRunningSteps(current, 'Cancelled.'), status: 'cancelled', error: 'You cancelled the run. Completed steps are kept above.' }
+      } else {
+        current = {
+          ...finishRunningSteps(current, 'Stopped because the run failed.'),
+          status: 'error',
+          error: error instanceof Error ? error.message : 'The agent run failed unexpectedly.',
+        }
+      }
+      setRun(current)
+    } finally {
+      if (controllerRef.current === controller) controllerRef.current = null
+    }
+    remember(current)
+  }
+
+  function changeProposal(businessId: string, changes: Partial<Pick<Proposal, 'emailSubject' | 'emailBody'>>) {
+    if (!run) return
+    const next = updateProposal(run, businessId, changes)
+    setRun(next)
+    remember(next)
+  }
+
+  function clearHistory() {
+    setHistory([])
+    saveHistory(window.localStorage, [])
+  }
+
+  const result = run?.result
+  const proposals = result?.proposals ?? []
+  const modeLabel = run?.mode === 'mock' ? 'LOCAL MOCK · NO AI' : run?.mode === 'live' ? 'LIVE NEBIUS MODEL' : null
+
+  return (
+    <div className="page-content">
+      <section className="page-heading">
+        <div>
+          <div className="eyebrow"><span className="eyebrow-line" /> CHAOSPILOT · WEBSITE AUDIT AGENT</div>
+          <h1>Audit websites, draft proposals<span className="heading-period">.</span></h1>
+          <p>Give up to three business websites. The agent inspects them on the server, cites what it found, and drafts a proposal you can edit.</p>
+        </div>
+      </section>
+
+      <div className="dashboard-grid">
+        <div className="left-column">
+          <TaskComposer
+            task={task}
+            businesses={businesses}
+            isBusy={isBusy}
+            hasRun={Boolean(run)}
+            formError={formError}
+            onTaskChange={(value) => { setTask(value); setFormError('') }}
+            onBusinessChange={(id, updates) => {
+              setBusinesses((current) => current.map((business) => business.id === id ? { ...business, ...updates } : business))
+              setFormError('')
+            }}
+            onAddBusiness={() => setBusinesses((current) => current.length >= 3 ? current : [...current, newBusiness()])}
+            onRemoveBusiness={(id) => setBusinesses((current) => current.filter((business) => business.id !== id))}
+            onStart={() => void start()}
+            onCancel={() => controllerRef.current?.abort()}
+            onLoadSample={() => setInputs(sampleTask)}
+            onRetry={run ? () => { setInputs(run.request); void start(run.request) } : undefined}
+          />
+
+          <section className="run-overview panel" aria-label="Run status">
+            <div className="overview-icon"><Zap size={17} fill="currentColor" /></div>
+            <div className="overview-main">
+              <div className="overview-title-row">
+                <div className="overview-title">
+                  <strong>{!run ? 'Ready when you are' : run.status === 'running' ? 'Agent is working' : run.status === 'completed' ? 'Run complete' : run.status === 'cancelled' ? 'Run cancelled' : 'Run needs attention'}</strong>
+                  <span>{!run ? 'Each step will stream in as the server executes it.' : run.status === 'running' ? `${run.steps.filter((step) => step.status !== 'running').length} step(s) finished · model turn ${Math.max(run.turns, 1)}` : run.error ?? `${run.steps.length} tool call(s) across ${run.turns} model turn(s)${run.model ? ` · ${run.model}` : ''}`}</span>
+                </div>
+                <span className={`run-status status-${run?.status ?? 'idle'}`}>
+                  <span className="status-dot" />{!run ? 'STANDING BY' : run.status === 'running' ? 'RUNNING' : run.status === 'completed' ? 'COMPLETE' : run.status === 'cancelled' ? 'CANCELLED' : 'FAILED'}
+                </span>
+              </div>
+              {modeLabel && <span className={`mode-badge mode-${run?.mode}`}>{modeLabel}{run?.model && run.mode === 'live' ? ` · ${run.model}` : ''}</span>}
+            </div>
+          </section>
+
+          <AuditTimeline run={run} />
+
+          {history.length > 0 && (
+            <section className="history-panel panel" aria-labelledby="history-title">
+              <div className="section-heading">
+                <div className="section-title-wrap">
+                  <span className="section-icon"><History size={15} /></span>
+                  <div><h2 id="history-title">Recent runs</h2><p>Saved in this browser only</p></div>
+                </div>
+                <button type="button" className="icon-text-button" onClick={clearHistory} disabled={isBusy}><Trash2 size={12} /> Clear</button>
+              </div>
+              <ul className="history-list">
+                {history.map((entry) => (
+                  <li key={entry.id}>
+                    <button type="button" disabled={isBusy} className={entry.id === run?.id ? 'history-selected' : ''} onClick={() => { setRun(entry); setInputs(entry.request) }}>
+                      <span className={`history-dot status-${entry.status}`} />
+                      <span className="history-copy">
+                        <strong>{entry.request.businesses.map((business) => business.name).join(', ')}</strong>
+                        <small>{formatTime(entry.createdAt)} · {entry.mode === 'mock' ? 'mock' : entry.model ?? 'live'} · {entry.result?.proposals.length ?? 0} proposal(s)</small>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        <section className="results-section panel" aria-labelledby="results-title">
+          <div className="section-heading results-heading">
+            <div className="section-title-wrap">
+              <span className="section-icon results-icon"><Sparkles size={16} /></span>
+              <div><h2 id="results-title">Results</h2><p>{run?.mode === 'mock' ? 'Rule-based mock text — real website fetches, no AI' : run?.model ? `Written by ${run.model} from inspected evidence` : 'Proposals and evidence appear here'}</p></div>
+            </div>
+            {result && <span className="results-count">{proposals.length} PROPOSAL{proposals.length === 1 ? '' : 'S'}</span>}
+          </div>
+
+          <div className="results-body">
+            {!run ? (
+              <div className="results-state empty-state">
+                <span className="empty-icon"><Search size={20} /></span>
+                <strong>No run yet</strong>
+                <p>Add businesses or load the sample task, then start a run. You will see every fetch and tool call as it happens.</p>
+              </div>
+            ) : run.status === 'running' && !result ? (
+              <div className="results-state loading-state">
+                <div className="loading-orbit"><span /><span /><span /></div>
+                <strong>Inspecting websites</strong>
+                <p>Proposals appear once the model has reviewed the evidence. Follow the live timeline for each step.</p>
+              </div>
+            ) : !result ? (
+              <div className="results-state error-state" role="alert">
+                <span className="empty-icon error-empty-icon">{run.status === 'cancelled' ? <Bot size={21} /> : <CircleAlert size={21} />}</span>
+                <strong>{run.status === 'cancelled' ? 'Run cancelled' : 'The run did not finish'}</strong>
+                <p>{run.error}</p>
+                <button type="button" className="secondary-button" onClick={() => { setInputs(run.request); void start(run.request) }}>Retry with the same inputs</button>
+              </div>
+            ) : (
+              <div className="results-content">
+                <div className="agent-summary">
+                  <strong><FileText size={13} /> Agent summary</strong>
+                  <p>{result.answer.replace(/\*\*|__|`/g, '')}</p>
+                  {result.warnings.length > 0 && (
+                    <ul className="warning-list">
+                      {result.warnings.map((warning) => <li key={warning}><TriangleAlert size={12} /> {warning}</li>)}
+                    </ul>
+                  )}
+                </div>
+
+                {proposals.length > 0 ? (
+                  <div className="proposal-list">
+                    {proposals.map((proposal, index) => (
+                      <ProposalCard
+                        key={proposal.businessId}
+                        proposal={proposal}
+                        business={run.businesses.find((business) => business.id === proposal.businessId)}
+                        index={index}
+                        edited={run.editedBusinessIds.includes(proposal.businessId)}
+                        onChange={(changes) => changeProposal(proposal.businessId, changes)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="results-disclaimer">No proposal was saved. The agent only writes proposals for websites it inspected successfully.</p>
+                )}
+
+                <div className="opportunity-heading evidence-heading"><span>INSPECTED EVIDENCE</span><span>FROM SERVER-SIDE FETCHES</span></div>
+                <EvidencePanel businesses={run.businesses} inspections={result.inspections} />
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+      <footer className="page-footer"><span>CHAOSPILOT <span className="footer-dot">·</span> WEBSITE AUDIT</span><span>NVIDIA model via Nebius <span className="footer-dot">·</span> Server-side, allowlisted tools</span></footer>
+    </div>
+  )
+}

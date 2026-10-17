@@ -3,6 +3,11 @@ import { fileURLToPath } from 'node:url'
 
 const sources = [
   ['agentInstructions', '../functions/agent/AGENT.md'],
+  ['auditAgentInstructions', '../functions/agent/AUDIT_AGENT.md'],
+  ['websiteInspection', '../functions/agent/skills/website-inspection/SKILL.md'],
+  ['competitorResearch', '../functions/agent/skills/competitor-research/SKILL.md'],
+  ['websiteAnalysis', '../functions/agent/skills/website-analysis/SKILL.md'],
+  ['contentGeneration', '../functions/agent/skills/content-generation/SKILL.md'],
 ]
 
 const moduleContents = sources.map(([name, relativePath]) => {

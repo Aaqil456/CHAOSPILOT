@@ -10,6 +10,7 @@ const modelTimeoutMs = 30_000
 
 const completionSchema = z.object({
   choices: z.array(z.object({
+    finish_reason: z.string().nullable().optional(),
     message: z.object({
       content: z.string().nullable().optional(),
       tool_calls: z.array(z.object({
@@ -19,7 +20,7 @@ const completionSchema = z.object({
           name: z.string().min(1),
           arguments: z.string(),
         }),
-      })).optional(),
+      })).nullable().optional(),
     }),
   })).min(1),
 })
@@ -305,11 +306,19 @@ export function createNebiusModel(options: NebiusModelOptions): AgentModel {
         throw new NebiusModelError(
           502,
           'invalid_upstream_response',
-          `Nebius returned an unexpected Chat Completions response format (${responseShape(responseBody)}).`,
+          `Nebius returned an unexpected Chat Completions response format (${completion.error.issues.slice(0, 2).map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')}; ${responseShape(responseBody)}).`,
         )
       }
 
-      const message = completion.data.choices[0].message
+      const [choice] = completion.data.choices
+      const message = choice.message
+      if (choice.finish_reason === 'length' && !message.tool_calls?.length) {
+        throw new NebiusModelError(
+          502,
+          'output_truncated',
+          `The model reached its output limit (${options.maxTokens} tokens) before finishing. Raise the max-tokens setting for this endpoint.`,
+        )
+      }
       return parseDecision(message.content, message.tool_calls)
     },
   }

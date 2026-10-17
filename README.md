@@ -1,6 +1,14 @@
 # ChaosPilot
 
-ChaosPilot is a prompt-driven website-development workspace. It asks the configured Nebius model to create or update a small HTML/CSS/JavaScript project, applies only validated file operations to an in-memory request-scoped workspace, and returns the resulting files to the browser. The browser saves the project in `localStorage` and renders it in a sandboxed iframe preview.
+ChaosPilot is an AI workflow agent that turns a natural-language request into an observable, multi-step task. Its primary workflow is the **website audit agent**:
+
+1. You enter a task and up to three business names with public website URLs.
+2. An NVIDIA model on Nebius Token Factory decides which allowlisted tools to call.
+3. A Cloudflare Pages Function runs those tools: it fetches each homepage (and up to two linked pages), extracts evidence, and validates every argument with Zod.
+4. Each step streams to the browser as it happens, with its status, inputs, outputs, errors and timing.
+5. The model writes a proposal for each business from the inspected evidence. Every finding cites the value it relies on, and you can edit, copy or download the proposals. Nothing is sent to the businesses.
+
+A secondary **website builder** workflow (`#builder`) generates a small HTML/CSS/JS site in a sandboxed preview.
 
 ## Setup
 
@@ -8,40 +16,81 @@ ChaosPilot is a prompt-driven website-development workspace. It asks the configu
 npm install
 ```
 
-Set `NEBIUS_API_KEY` as a server-side Cloudflare Pages secret and `NEBIUS_MODEL` as a server-side environment variable. For local development, copy `.dev.vars.example` to `.dev.vars` and set values there. Never put the API key in client-side variables or source code.
+Create `.dev.vars` (or `.env`) in the project root for local development:
 
-The existing Nebius adapter uses the repository's Chat Completions request/response format and supports registered function tools. Automated tests mock its responses; they do **not** verify live compatibility for the configured Nebius model. A live run may consume credits.
+```ini
+NEBIUS_API_KEY=your-nebius-api-key
+NEBIUS_MODEL=nvidia/Nemotron-3_5-Lightning
+NEBIUS_AUDIT_MAX_TOKENS=3000   # optional; website audit output limit (default 3000, max 4096)
+NEBIUS_MAX_TOKENS=600          # optional; website builder output limit (default 600, max 4096)
+MOCK_MODE=false                # true = local mock without AI calls (localhost only)
+```
 
-## Run and test
+The API key is read only by server-side Pages Functions. Never put it in a `VITE_` variable or client code.
+
+## Model configuration
+
+- `NEBIUS_MODEL` must be an NVIDIA model that Nebius Token Factory serves with **function (tool) calling**. The adapter uses the OpenAI-compatible endpoint `https://api.tokenfactory.nebius.com/v1/chat/completions`.
+- Verified live on 2026-10-18 with `nvidia/Nemotron-3_5-Lightning`: a three-site audit finished in about 13 seconds over 7 model turns.
+- Reasoning models spend output tokens on reasoning. If a run fails with `output_truncated`, raise `NEBIUS_AUDIT_MAX_TOKENS`.
+- A larger Nemotron model may judge findings better, at higher cost. Every finding shows its evidence so you can spot weak claims.
+
+## Run locally
 
 ```sh
-npm run build
-npx wrangler pages functions build functions --outdir dist
+npm run build        # embeds agent instructions, type-checks src/ and functions/, builds dist/
+npm run pages:dev    # serves the app and /api routes at http://localhost:8788
+```
+
+Open http://localhost:8788, click **Load sample task**, then **Start run**.
+
+**Mock mode:** with `MOCK_MODE=true` on localhost, `/api/audit` uses a deterministic stand-in model. It still runs the **real tools and real website fetches**, but the proposals are rule-based text labelled `[MOCK]`, and the UI shows *LOCAL MOCK · NO AI*. Mock mode is ignored on any non-local host.
+
+## Testing
+
+```sh
+npm test         # 54 Node tests: runtime, Nebius adapter, URL safety, fetching, extraction, tools, /api/audit, client state
 npm run lint
-npm test
+npm run build
 ```
 
-For local Pages Functions development:
+The tests use stubbed `fetch`; they do not call Nebius or the public internet. A live run with real credentials is the only way to confirm a model works with tool calling.
 
-```powershell
-npm run pages:dev
-```
+## How the audit agent works
 
-Wrangler serves the site at `http://localhost:8788`. Set `MOCK_MODE=true` in local server-side environment configuration to use the deterministic mock on localhost without calling Nebius or consuming inference credits. The mock output is a fixed fixture, not generated from the prompt. Other hosts continue to require valid Nebius configuration and use the live model. Leave mock mode disabled when deliberately testing live inference.
+| Piece | File |
+| --- | --- |
+| Streaming endpoint `POST /api/audit` (NDJSON events) | `functions/api/audit.ts`, `functions/agent/auditHandler.ts` |
+| Bounded agent loop (turn and tool-call limits, Zod argument validation, cancellation) | `functions/agent/runtime.ts` |
+| Allowlisted tools: `inspect_website`, `inspect_page`, `save_proposal` | `functions/agent/auditTools.ts` |
+| Safe fetching and HTML evidence extraction | `functions/agent/safeFetch.ts`, `urlSafety.ts`, `pageEvidence.ts` |
+| Shared request, proposal and event schemas | `functions/agent/auditSchema.ts` |
+| Agent instructions | `functions/agent/AUDIT_AGENT.md` |
+| UI | `src/views/AuditView.tsx`, `src/components/*`, `src/audit/*` |
 
-## Project workspace and limits
+### Safety limits
 
-- The only project paths are `index.html`, `styles.css`, and `script.js`.
-- Each file is limited to 64 KB; all project files together are limited to 160 KB.
-- A run accepts a request body of at most 512 KB, and each request-scoped workspace allows at most 12 project-tool operations.
-- The agent runtime is bounded to eight model turns and 12 tool calls. File tools have no access to the server filesystem or shell.
-- The browser stores the task and current file snapshot in localStorage. Clearing browser storage clears the local project; there is no account sync or server-side project persistence.
-- The preview uses an iframe sandbox with scripts enabled but without same-origin privileges. Its Content Security Policy blocks network connections, external assets, forms, frames, and plugins; inline project CSS/JavaScript can run only inside that isolated preview.
+- The model refers to businesses only by server-assigned IDs (`b1`–`b3`), so it can only fetch URLs the user submitted. `inspect_page` accepts only same-origin paths that were found as links on pages already inspected.
+- URLs must be `http`/`https` on default ports, with a public domain name. IP literals, `localhost`, `.local`, `.internal` and other reserved names, and URLs with embedded credentials are rejected. Cloudflare Workers cannot resolve DNS before fetching, so blocking is name-based. Cloudflare's network does not route Worker requests to private networks.
+- Redirects are followed manually: at most 3, each re-validated. Each fetch has an 8-second timeout, reads at most 512 KB of HTML, and must return `text/html`. Each run is capped at 24 outbound requests.
+- Each run is limited to 12 model turns and 16 tool calls, and each model call to a 30-second timeout. Cancelling in the browser aborts in-flight model calls and fetches.
+- Website text is passed to the model as untrusted data. No tool can send messages, run code or reach anything beyond the submitted sites.
+- If the model tries to finish without saving a proposal for an inspected site, it is reminded at most twice. Any remaining gaps are shown as warnings, never as invented proposals.
 
-Generated JavaScript is untrusted. The preview is isolated from the ChaosPilot application, but users should still avoid entering sensitive information into generated sites.
+### Known limitations
 
-## Deployment
+- Pages that render their content with JavaScript return little HTML. The UI flags these as "evidence is limited".
+- There are no screenshots or real performance scores. Those would need a headless browser or a third-party API.
+- History is stored in this browser's `localStorage` (last 8 runs). There are no accounts and no server-side storage.
+- On the Cloudflare **free** plan, Functions have a 10 ms CPU limit per request. Parsing large pages may exceed it; the Workers Paid plan raises the limit.
 
-Cloudflare Pages serves the Vite build from `dist` and discovers API routes under `functions/`. Configure `NEBIUS_API_KEY`, `NEBIUS_MODEL`, and optionally `NEBIUS_MAX_TOKENS` as server-side Pages variables/secrets. Do not expose secrets through `VITE_` variables. Check `wrangler.jsonc` and the Cloudflare Pages configuration before deploying.
+## Deployment (Cloudflare Pages)
 
-This milestone implements initial site generation, preview, and browser-local persistence. Existing files are protected from overwrites; follow-up editing is deliberately deferred to the next milestone. A real live Nebius tool-call run must still be performed to confirm compatibility with the selected model. There is no website browsing, web search, database, authentication, shell execution, or automatic deployment in the primary workflow.
+1. Connect the repository in Cloudflare Pages, or run `npm run build && npx wrangler pages deploy dist`.
+2. Build command: `npm run build`. Output directory: `dist`. API routes are discovered under `functions/`.
+3. In **Settings → Variables and Secrets**, add `NEBIUS_API_KEY` as a **secret**, and add `NEBIUS_MODEL` (plus the optional token limits) as variables. Do not set `MOCK_MODE` in production.
+4. After deploying, run the sample task on the deployed URL and confirm the run status shows *LIVE NEBIUS MODEL*.
+
+## Website builder (secondary workflow)
+
+`POST /api/run` asks the model to create `index.html`, `styles.css` and `script.js` in a request-scoped workspace. The files are saved in `localStorage` and previewed in a sandboxed iframe whose CSP blocks network access. Editing existing projects is not implemented yet.
