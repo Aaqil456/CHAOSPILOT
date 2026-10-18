@@ -37,12 +37,15 @@ export function describeStep(step: TimelineStep, businesses: AuditBusiness[]): {
     title = `Inspect ${typeof input.path === 'string' ? input.path : 'page'} · ${name}`
     const page = record(output.page)
     if (page.url) detail = `HTTP ${page.status} · ${page.wordCount} words · ${page.title ? `“${page.title}”` : 'no <title>'}`
+  } else if (step.name === 'save_comparison') {
+    title = 'Save comparison'
+    if (output.saved) detail = `${output.differences} side-by-side difference${output.differences === 1 ? '' : 's'} saved`
   } else if (step.name === 'save_proposal') {
     title = `Save proposal · ${name}`
     if (output.saved) detail = `${output.findings} evidence-based finding${output.findings === 1 ? '' : 's'} saved`
   }
 
-  if (step.status === 'running') detail = step.name === 'save_proposal' ? 'Validating proposal…' : 'Fetching on the server…'
+  if (step.status === 'running') detail = step.name === 'save_proposal' ? 'Validating proposal…' : step.name === 'save_comparison' ? 'Validating comparison…' : 'Fetching on the server…'
   if (step.status === 'error') detail = [error || 'The step failed.', ...issues].join(' · ')
   return { title, detail }
 }

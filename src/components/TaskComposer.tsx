@@ -1,7 +1,16 @@
-import { CircleAlert, FlaskConical, Globe2, LoaderCircle, Plus, Rocket, RotateCcw, X } from 'lucide-react'
+import { CircleAlert, FlaskConical, Globe2, LoaderCircle, Rocket, RotateCcw } from 'lucide-react'
 import type { Business } from '../types'
 
 type TaskComposerProps = {
+  title: string
+  subtitle: string
+  taskLabel: string
+  taskPlaceholder: string
+  /** Heading above the website fields, for example "WEBSITE" or "WEBSITES TO COMPARE". */
+  websitesHeading: string
+  /** Placeholder for each business name field; its length does not change the number of fields. */
+  namePlaceholders: string[]
+  hint: string
   task: string
   businesses: Business[]
   isBusy: boolean
@@ -9,8 +18,6 @@ type TaskComposerProps = {
   formError: string
   onTaskChange: (task: string) => void
   onBusinessChange: (id: string, updates: Partial<Business>) => void
-  onAddBusiness: () => void
-  onRemoveBusiness: (id: string) => void
   onStart: () => void
   onCancel: () => void
   onLoadSample: () => void
@@ -18,6 +25,13 @@ type TaskComposerProps = {
 }
 
 export function TaskComposer({
+  title,
+  subtitle,
+  taskLabel,
+  taskPlaceholder,
+  websitesHeading,
+  namePlaceholders,
+  hint,
   task,
   businesses,
   isBusy,
@@ -25,8 +39,6 @@ export function TaskComposer({
   formError,
   onTaskChange,
   onBusinessChange,
-  onAddBusiness,
-  onRemoveBusiness,
   onStart,
   onCancel,
   onLoadSample,
@@ -42,7 +54,7 @@ export function TaskComposer({
       <div className="section-heading">
         <div className="section-title-wrap">
           <span className="section-icon composer-icon"><Rocket size={15} /></span>
-          <div><h2 id="composer-title">Your task</h2><p>Describe what you want to accomplish</p></div>
+          <div><h2 id="composer-title">{title}</h2><p>{subtitle}</p></div>
         </div>
         <button type="button" className="sample-button" onClick={onLoadSample} disabled={isBusy}>
           <FlaskConical size={13} /> Load sample task
@@ -50,7 +62,7 @@ export function TaskComposer({
       </div>
 
       <form className="composer-form" onSubmit={submit}>
-        <label className="field-label" htmlFor="task-input">YOUR TASK</label>
+        <label className="field-label" htmlFor="task-input">{taskLabel}</label>
         <div className="task-input-wrap">
           <SparkleMark />
           <textarea
@@ -59,30 +71,29 @@ export function TaskComposer({
             onChange={(event) => onTaskChange(event.target.value)}
             rows={3}
             disabled={isBusy}
-            placeholder="What would you like to accomplish?"
+            placeholder={taskPlaceholder}
           />
           <span className="task-input-hint">Be specific for better results</span>
         </div>
 
         <div className="business-field-heading">
-          <label className="field-label">BUSINESS WEBSITES <span className="field-count">{businesses.length}/3</span></label>
-          {businesses.length < 3 && <button type="button" className="add-business-button" onClick={onAddBusiness} disabled={isBusy}><Plus size={13} /> Add business</button>}
+          <span className="field-label">{websitesHeading}</span>
         </div>
         <div className="business-list">
           {businesses.map((business, index) => (
             <div className="business-input-row" key={business.id}>
               <span className={`business-number business-number-${index + 1}`}>{String(index + 1).padStart(2, '0')}</span>
-              <label className="visually-hidden" htmlFor={`${business.id}-name`}>Business {index + 1} name</label>
+              <label className="visually-hidden" htmlFor={`${business.id}-name`}>Website {index + 1} name</label>
               <input
                 id={`${business.id}-name`}
                 value={business.name}
                 onChange={(event) => onBusinessChange(business.id, { name: event.target.value })}
                 disabled={isBusy}
-                placeholder="Business name"
+                placeholder={namePlaceholders[index] ?? 'Business name'}
               />
               <span className="business-input-divider" />
               <Globe2 size={14} className="url-globe" />
-              <label className="visually-hidden" htmlFor={`${business.id}-url`}>Business {index + 1} website URL</label>
+              <label className="visually-hidden" htmlFor={`${business.id}-url`}>Website {index + 1} URL</label>
               <input
                 id={`${business.id}-url`}
                 className="url-input"
@@ -97,14 +108,13 @@ export function TaskComposer({
                 href={business.url}
                 target="_blank"
                 rel="noreferrer"
-                aria-label={`Open ${business.name || `business ${index + 1}`} website in a new tab`}
+                aria-label={`Open ${business.name || `website ${index + 1}`} in a new tab`}
                 onClick={(event) => {
                   if (!business.url) event.preventDefault()
                 }}
               >
                 <Globe2 size={14} />
               </a>
-              {businesses.length > 1 && <button type="button" className="remove-business" onClick={() => onRemoveBusiness(business.id)} disabled={isBusy} aria-label={`Remove business ${index + 1}`}><X size={14} /></button>}
             </div>
           ))}
         </div>
@@ -116,16 +126,16 @@ export function TaskComposer({
             <button type="button" className="cancel-button" onClick={onCancel}><span className="cancel-square" /> Cancel run</button>
           ) : (
             <div className="composer-buttons">
-            {hasRun && onRetry && (
-              <button type="button" className="secondary-button" onClick={onRetry}><RotateCcw size={13} /> Retry</button>
-            )}
-            <button type="submit" className="start-button">
-              <Rocket size={15} /> {hasRun ? 'Run with these inputs' : 'Start run'} <span className="button-arrow">↗</span>
-            </button>
+              {hasRun && onRetry && (
+                <button type="button" className="secondary-button" onClick={onRetry}><RotateCcw size={13} /> Retry</button>
+              )}
+              <button type="submit" className="start-button">
+                <Rocket size={15} /> {hasRun ? 'Run with these inputs' : 'Start run'} <span className="button-arrow">↗</span>
+              </button>
             </div>
           )}
         </div>
-        <div className="demo-error-hint">Live runs call the configured NVIDIA model through Nebius and may use credits. Only the homepage and up to two same-site pages per business are fetched. Nothing is sent to the businesses.</div>
+        <div className="demo-error-hint">{hint}</div>
       </form>
     </section>
   )

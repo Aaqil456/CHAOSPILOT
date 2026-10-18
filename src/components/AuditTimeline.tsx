@@ -40,7 +40,7 @@ export function AuditTimeline({ run }: AuditTimelineProps) {
           {run.steps.map((step) => {
             const { title, detail } = describeStep(step, run.businesses)
             const stateClass = step.status === 'completed' ? 'step-completed' : step.status === 'error' ? 'step-failed' : 'step-running'
-            const Icon = step.name === 'save_proposal' ? FileCheck2 : Globe2
+            const Icon = step.name.startsWith('save_') ? FileCheck2 : Globe2
             return (
               <div className={`timeline-step ${stateClass}`} key={`${step.id}-${step.turn}`}>
                 <div className="timeline-rail">

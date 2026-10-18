@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 const sources = [
   ['auditAgentInstructions', '../functions/agent/AUDIT_AGENT.md'],
+  ['compareAgentInstructions', '../functions/agent/COMPARE_AGENT.md'],
   ['websiteInspection', '../functions/agent/skills/website-inspection/SKILL.md'],
   ['competitorResearch', '../functions/agent/skills/competitor-research/SKILL.md'],
   ['websiteAnalysis', '../functions/agent/skills/website-analysis/SKILL.md'],

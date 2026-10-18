@@ -50,9 +50,18 @@ const socialHosts: Array<[string, RegExp]> = [
 const tagPattern = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<!(?:doctype)?[^>]*>|<(\/?)([a-zA-Z][a-zA-Z0-9:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/gi
 const attributePattern = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g
 
+// HTML names for U+00A0 to U+00FF, in code point order (accented letters and common symbols).
+const latin1Names = (
+  'nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest '
+  + 'Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig '
+  + 'agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml'
+).split(' ')
+
 const namedEntities: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©', reg: '®',
-  ndash: '–', mdash: '—', hellip: '…', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", trade: '™',
+  ndash: '–', mdash: '—', hellip: '…', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', bull: '•',
+  euro: '€', equiv: '≡', larr: '←', rarr: '→', uarr: '↑', darr: '↓',
+  ...Object.fromEntries(latin1Names.map((name, index) => [name, String.fromCodePoint(0xa0 + index)])),
 }
 
 function decodeEntities(text: string): string {
@@ -63,7 +72,7 @@ function decodeEntities(text: string): string {
         : Number.parseInt(entity.slice(1), 10)
       return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match
     }
-    return namedEntities[entity.toLowerCase()] ?? match
+    return namedEntities[entity] ?? namedEntities[entity.toLowerCase()] ?? ' '
   })
 }
 

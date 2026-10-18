@@ -2,9 +2,8 @@
 // Function and by the browser so both sides validate the same shapes.
 
 import { z } from 'zod'
+import { siteScoreSchema } from './siteScore.ts'
 import { isSafePublicHttpUrl } from './urlSafety.ts'
-
-export const maxBusinesses = 3
 
 export const businessInputSchema = z.object({
   name: z.string().trim().min(1, 'Business name is required.').max(80),
@@ -13,10 +12,30 @@ export const businessInputSchema = z.object({
 
 export const auditRequestSchema = z.object({
   task: z.string().trim().min(1).max(2000),
-  businesses: z.array(businessInputSchema).min(1).max(maxBusinesses),
+  businesses: z.array(businessInputSchema).length(1, 'Audit one website at a time.'),
 }).strict()
 
 export type AuditRequest = z.infer<typeof auditRequestSchema>
+
+function siteKey(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+  } catch {
+    return url
+  }
+}
+
+export const compareRequestSchema = z.object({
+  task: z.string().trim().min(1).max(2000),
+  businesses: z.array(businessInputSchema).length(2, 'Enter exactly two websites to compare.'),
+}).strict().superRefine((request, context) => {
+  const [first, second] = request.businesses
+  if (first && second && siteKey(first.url) === siteKey(second.url)) {
+    context.addIssue({ code: 'custom', path: ['businesses', 1, 'url'], message: 'Enter two different websites to compare.' })
+  }
+})
+
+export type CompareRequest = z.infer<typeof compareRequestSchema>
 
 export const impactLevels = ['high', 'medium', 'low'] as const
 
@@ -37,6 +56,30 @@ export const proposalInputSchema = z.object({
 
 export type ProposalInput = z.infer<typeof proposalInputSchema>
 export type Finding = z.infer<typeof findingSchema>
+
+export const comparisonInputSchema = z.object({
+  summary: z.string().min(20).max(700).describe('Two to four sentences: which site has stronger on-page basics according to the scores, by how much, and why.'),
+  differences: z.array(z.object({
+    aspect: z.string().min(3).max(80).describe('What is being compared, for example "Calls to action".'),
+    site_a: z.string().min(3).max(250).describe('What site A shows for this aspect, citing an inspected value.'),
+    site_b: z.string().min(3).max(250).describe('What site B shows for this aspect, citing an inspected value.'),
+    takeaway: z.string().min(3).max(300).describe('One sentence on what the difference means.'),
+  }).strict()).min(2).max(5),
+  priorities: z.array(z.string().min(3).max(250)).min(1).max(4)
+    .describe('Ordered fixes for the lower-scoring site, most valuable first.'),
+}).strict()
+
+export const comparisonSchema = z.object({
+  summary: z.string(),
+  differences: z.array(z.object({
+    aspect: z.string(),
+    siteA: z.string(),
+    siteB: z.string(),
+    takeaway: z.string(),
+  })),
+  priorities: z.array(z.string()),
+})
+export type Comparison = z.infer<typeof comparisonSchema>
 
 export const auditBusinessSchema = z.object({
   id: z.string(),
@@ -75,6 +118,7 @@ export const inspectionSummarySchema = z.object({
     htmlKB: z.number(),
   })),
   evidence: z.record(z.string(), z.unknown()).nullable(),
+  score: siteScoreSchema.nullable().default(null),
 })
 export type InspectionSummary = z.infer<typeof inspectionSummarySchema>
 
@@ -98,6 +142,7 @@ export const auditStreamEventSchema = z.discriminatedUnion('type', [
     type: z.literal('result'),
     answer: z.string(),
     proposals: z.array(proposalSchema),
+    comparison: comparisonSchema.nullable().default(null),
     inspections: z.array(inspectionSummarySchema),
     turns: z.number(),
     stopReason: z.enum(['final', 'turn_limit', 'tool_call_limit']),

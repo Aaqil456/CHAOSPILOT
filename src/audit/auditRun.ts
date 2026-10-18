@@ -2,12 +2,15 @@ import { z } from 'zod'
 import {
   auditBusinessSchema,
   auditStreamEventSchema,
+  comparisonSchema,
   inspectionSummarySchema,
   proposalSchema,
-  type AuditRequest,
   type AuditStreamEvent,
   type Proposal,
 } from '../../functions/agent/auditSchema.ts'
+
+/** What the browser sends to either streaming endpoint. */
+export type RunRequest = { task: string; businesses: Array<{ name: string; url: string }> }
 
 export const timelineStepSchema = z.object({
   id: z.string(),
@@ -23,6 +26,7 @@ export type TimelineStep = z.infer<typeof timelineStepSchema>
 const resultSchema = z.object({
   answer: z.string(),
   proposals: z.array(proposalSchema),
+  comparison: comparisonSchema.nullable().default(null),
   inspections: z.array(inspectionSummarySchema),
   turns: z.number(),
   stopReason: z.enum(['final', 'turn_limit', 'tool_call_limit']),
@@ -49,7 +53,7 @@ export const auditRunSchema = z.object({
 })
 export type AuditRun = z.infer<typeof auditRunSchema>
 
-export function createRun(request: AuditRequest, id: string, createdAt: string): AuditRun {
+export function createRun(request: RunRequest, id: string, createdAt: string): AuditRun {
   return {
     id,
     createdAt,
@@ -103,6 +107,7 @@ export function applyAuditEvent(run: AuditRun, event: AuditStreamEvent): AuditRu
         result: {
           answer: event.answer,
           proposals: event.proposals,
+          comparison: event.comparison,
           inspections: event.inspections,
           turns: event.turns,
           stopReason: event.stopReason,
@@ -181,10 +186,15 @@ export function createEventParser(onEvent: (event: AuditStreamEvent) => void) {
 }
 
 export async function streamAudit(
-  request: AuditRequest,
-  options: { signal: AbortSignal; onEvent: (event: AuditStreamEvent) => void; fetchImplementation?: typeof fetch },
+  request: RunRequest,
+  options: {
+    signal: AbortSignal
+    onEvent: (event: AuditStreamEvent) => void
+    endpoint?: '/api/audit' | '/api/compare'
+    fetchImplementation?: typeof fetch
+  },
 ): Promise<void> {
-  const response = await (options.fetchImplementation ?? fetch)('/api/audit', {
+  const response = await (options.fetchImplementation ?? fetch)(options.endpoint ?? '/api/audit', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),

@@ -191,3 +191,21 @@ test('evidence extraction flags JavaScript-only shells', () => {
   assert.equal(evidence.wordCount, 0)
   assert.equal(evidence.likelyClientRendered, true)
 })
+
+test('HTML entities are decoded, and unknown symbol entities never leak into evidence', () => {
+  const html = '<html><head><title>Caf&eacute; &amp; Bar &mdash; Open</title></head><body><a href="/menu">&equiv; Menu</a><a href="/book">&notarealentity; Book now</a></body></html>'
+  const evidence = extractPageEvidence({
+    requestedUrl: 'https://cafe.com/',
+    finalUrl: 'https://cafe.com/',
+    status: 200,
+    redirects: [],
+    contentType: 'text/html',
+    responseMs: 10,
+    htmlBytes: html.length,
+    truncated: false,
+    html,
+  })
+  assert.equal(evidence.title, 'Café & Bar — Open')
+  assert.deepEqual(evidence.callsToAction, ['≡ Menu', 'Book now'])
+  assert.doesNotMatch(JSON.stringify(evidence), /&[a-z]+;/i)
+})

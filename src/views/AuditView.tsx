@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, CircleAlert, FileText, History, Search, Sparkles, Trash2, TriangleAlert, Zap } from 'lucide-react'
+import { Bot, CircleAlert, FileText, History, Search, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { auditRequestSchema, type AuditRequest, type Proposal } from '../../functions/agent/auditSchema'
 import { AuditTimeline } from '../components/AuditTimeline'
 import { EvidencePanel } from '../components/EvidencePanel'
 import { ProposalCard } from '../components/ProposalCard'
+import { RunStatusCard } from '../components/RunStatusCard'
+import { ScoreCard } from '../components/ScoreCard'
 import { TaskComposer } from '../components/TaskComposer'
 import { loadHistory, saveHistory, upsertRun } from '../audit/auditHistory'
 import { applyAuditEvent, createRun, finishRunningSteps, streamAudit, updateProposal, type AuditRun } from '../audit/auditRun'
 import type { Business } from '../types'
 
-const defaultTask = 'Review these websites and find practical improvements that would help each business win more customers. Draft a short, friendly proposal for each one.'
+const defaultTask = 'Review this website and find practical improvements that would help the business win more customers. Draft a short, friendly proposal.'
 
 const sampleTask = {
-  task: 'Review these websites and find practical improvements that would help each organisation attract and convert more visitors. Draft a short, friendly proposal for each one.',
-  businesses: [
-    { name: 'Berkshire Hathaway', url: 'https://www.berkshirehathaway.com' },
-    { name: 'CERN First Website', url: 'https://info.cern.ch' },
-    { name: 'Example Domain', url: 'https://example.com' },
-  ],
+  task: 'Review this website and find practical improvements that would help the organisation attract and convert more visitors. Draft a short, friendly proposal.',
+  businesses: [{ name: 'Berkshire Hathaway', url: 'https://www.berkshirehathaway.com' }],
 }
 
 let businessCounter = 0
@@ -33,7 +31,7 @@ function runId(): string {
 function describeIssue(path: PropertyKey[], message: string): string {
   if (path[0] === 'businesses' && typeof path[1] === 'number') {
     const field = path[2] === 'url' ? 'website URL' : path[2] === 'name' ? 'name' : 'details'
-    return `Business ${path[1] + 1} ${field}: ${message}`
+    return `Business ${field}: ${message}`
   }
   if (path[0] === 'task') return 'Describe the task (up to 2,000 characters).'
   return message
@@ -83,7 +81,7 @@ export function AuditView() {
       if (!parsed.success) {
         const issue = parsed.error.issues[0]
         setFormError(issue?.path[0] === 'businesses' && issue.path.length === 1
-          ? 'Add at least one business with a name and public website URL (maximum three).'
+          ? 'Enter the business name and its public website URL.'
           : describeIssue(issue?.path ?? [], issue?.message ?? 'Check the task and business details.'))
         return
       }
@@ -135,21 +133,27 @@ export function AuditView() {
 
   const result = run?.result
   const proposals = result?.proposals ?? []
-  const modeLabel = run?.mode === 'mock' ? 'LOCAL MOCK · NO AI' : run?.mode === 'live' ? 'LIVE NEBIUS MODEL' : null
 
   return (
     <div className="page-content">
       <section className="page-heading">
         <div>
           <div className="eyebrow"><span className="eyebrow-line" /> CHAOSPILOT · WEBSITE AUDIT AGENT</div>
-          <h1>Audit websites, draft proposals<span className="heading-period">.</span></h1>
-          <p>Give up to three business websites. The agent inspects them on the server, cites what it found, and drafts a proposal you can edit.</p>
+          <h1>Audit a website, draft a proposal<span className="heading-period">.</span></h1>
+          <p>Give a business website. The agent inspects it on the server, scores the on-page basics, cites what it found, and drafts a proposal you can edit.</p>
         </div>
       </section>
 
       <div className="dashboard-grid">
         <div className="left-column">
           <TaskComposer
+            title="Your task"
+            subtitle="Describe what you want to accomplish"
+            taskLabel="YOUR TASK"
+            taskPlaceholder="What would you like to accomplish?"
+            websitesHeading="BUSINESS WEBSITE"
+            namePlaceholders={['Business name']}
+            hint="Live runs call the configured NVIDIA model through Nebius and may use credits. Only the homepage and up to two same-site pages are fetched. Nothing is sent to the business."
             task={task}
             businesses={businesses}
             isBusy={isBusy}
@@ -160,29 +164,13 @@ export function AuditView() {
               setBusinesses((current) => current.map((business) => business.id === id ? { ...business, ...updates } : business))
               setFormError('')
             }}
-            onAddBusiness={() => setBusinesses((current) => current.length >= 3 ? current : [...current, newBusiness()])}
-            onRemoveBusiness={(id) => setBusinesses((current) => current.filter((business) => business.id !== id))}
             onStart={() => void start()}
             onCancel={() => controllerRef.current?.abort()}
             onLoadSample={() => setInputs(sampleTask)}
             onRetry={run ? () => { setInputs(run.request); void start(run.request) } : undefined}
           />
 
-          <section className="run-overview panel" aria-label="Run status">
-            <div className="overview-icon"><Zap size={17} fill="currentColor" /></div>
-            <div className="overview-main">
-              <div className="overview-title-row">
-                <div className="overview-title">
-                  <strong>{!run ? 'Ready when you are' : run.status === 'running' ? 'Agent is working' : run.status === 'completed' ? 'Run complete' : run.status === 'cancelled' ? 'Run cancelled' : 'Run needs attention'}</strong>
-                  <span>{!run ? 'Each step will stream in as the server executes it.' : run.status === 'running' ? `${run.steps.filter((step) => step.status !== 'running').length} step(s) finished · model turn ${Math.max(run.turns, 1)}` : run.error ?? `${run.steps.length} tool call(s) across ${run.turns} model turn(s)${run.model ? ` · ${run.model}` : ''}`}</span>
-                </div>
-                <span className={`run-status status-${run?.status ?? 'idle'}`}>
-                  <span className="status-dot" />{!run ? 'STANDING BY' : run.status === 'running' ? 'RUNNING' : run.status === 'completed' ? 'COMPLETE' : run.status === 'cancelled' ? 'CANCELLED' : 'FAILED'}
-                </span>
-              </div>
-              {modeLabel && <span className={`mode-badge mode-${run?.mode}`}>{modeLabel}{run?.model && run.mode === 'live' ? ` · ${run.model}` : ''}</span>}
-            </div>
-          </section>
+          <RunStatusCard run={run} />
 
           <AuditTimeline run={run} />
 
@@ -202,7 +190,7 @@ export function AuditView() {
                       <span className={`history-dot status-${entry.status}`} />
                       <span className="history-copy">
                         <strong>{entry.request.businesses.map((business) => business.name).join(', ')}</strong>
-                        <small>{formatTime(entry.createdAt)} · {entry.mode === 'mock' ? 'mock' : entry.model ?? 'live'} · {entry.result?.proposals.length ?? 0} proposal(s)</small>
+                        <small>{formatTime(entry.createdAt)} · {entry.mode === 'mock' ? 'mock' : entry.model ?? 'live'}{entry.result?.inspections[0]?.score ? ` · score ${entry.result.inspections[0].score.value}` : ''}</small>
                       </span>
                     </button>
                   </li>
@@ -226,13 +214,13 @@ export function AuditView() {
               <div className="results-state empty-state">
                 <span className="empty-icon"><Search size={20} /></span>
                 <strong>No run yet</strong>
-                <p>Add businesses or load the sample task, then start a run. You will see every fetch and tool call as it happens.</p>
+                <p>Enter a business website or load the sample task, then start a run. You will see every fetch and tool call as it happens.</p>
               </div>
             ) : run.status === 'running' && !result ? (
               <div className="results-state loading-state">
                 <div className="loading-orbit"><span /><span /><span /></div>
-                <strong>Inspecting websites</strong>
-                <p>Proposals appear once the model has reviewed the evidence. Follow the live timeline for each step.</p>
+                <strong>Inspecting the website</strong>
+                <p>The score and proposal appear once the model has reviewed the evidence. Follow the live timeline for each step.</p>
               </div>
             ) : !result ? (
               <div className="results-state error-state" role="alert">
@@ -252,6 +240,15 @@ export function AuditView() {
                     </ul>
                   )}
                 </div>
+
+                {result.inspections.map((inspection) => inspection.score && (
+                  <ScoreCard
+                    key={inspection.businessId}
+                    name={run.businesses.find((business) => business.id === inspection.businessId)?.name ?? inspection.businessId}
+                    url={run.businesses.find((business) => business.id === inspection.businessId)?.url}
+                    score={inspection.score}
+                  />
+                ))}
 
                 {proposals.length > 0 ? (
                   <div className="proposal-list">

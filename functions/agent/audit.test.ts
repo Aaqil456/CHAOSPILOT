@@ -124,11 +124,12 @@ test('audit route validates businesses and URLs before running', async () => {
   const tooMany = await handleAudit({
     request: auditRequest('https://chaospilot.test/api/audit', {
       task: 'Audit',
-      businesses: Array.from({ length: 4 }, (_, index) => ({ name: `B${index}`, url: `https://b${index}.com` })),
+      businesses: [{ name: 'A', url: 'https://a.com' }, { name: 'B', url: 'https://b.com' }],
     }),
     env: {},
   })
   assert.equal(tooMany.status, 400)
+  assert.match((await tooMany.json()).error.message, /one website at a time/)
 
   const noKey = await handleAudit({
     request: auditRequest('https://chaospilot.test/api/audit', { task: 'Audit', businesses: [{ name: 'Kopi', url: 'https://kopicorner.com' }] }),
@@ -138,14 +139,11 @@ test('audit route validates businesses and URLs before running', async () => {
   assert.equal((await noKey.json()).error.code, 'credentials_missing')
 })
 
-test('local mock audit streams real tool steps and evidence-based proposals', async () => {
+test('local mock audit streams real tool steps, a server-computed score and an evidence-based proposal', async () => {
   const response = await handleAudit({
     request: auditRequest('http://localhost:8788/api/audit', {
       task: 'Find improvements',
-      businesses: [
-        { name: 'Kopi Corner', url: 'https://kopicorner.com' },
-        { name: 'Broken Bakery', url: 'https://broken-site.com' },
-      ],
+      businesses: [{ name: 'Kopi Corner', url: 'https://kopicorner.com' }],
     }),
     env: { MOCK_MODE: 'true' },
   }, { fetchImplementation: siteFetch })
@@ -154,13 +152,14 @@ test('local mock audit streams real tool steps and evidence-based proposals', as
 
   const events = await readEvents(response)
   assert.equal(events[0].type, 'run_started')
-  assert.ok(events.some((event) => event.type === 'tool_started' && event.name === 'inspect_website'))
   const finished = events.flatMap((event) => event.type === 'tool_finished' ? [event.step] : [])
   assert.deepEqual(finished.map((step) => `${step.name}:${step.status}`), [
     'inspect_website:completed',
-    'inspect_website:error',
     'save_proposal:completed',
   ])
+  const inspectOutput = JSON.parse(finished[0].output) as { onPageScore: { value: number; biggestGaps: unknown[] } }
+  assert.equal(typeof inspectOutput.onPageScore.value, 'number')
+  assert.ok(inspectOutput.onPageScore.biggestGaps.length > 0)
 
   const result = events.at(-1)
   assert.equal(result?.type, 'result')
@@ -169,9 +168,28 @@ test('local mock audit streams real tool steps and evidence-based proposals', as
   assert.equal(result.proposals[0].businessId, 'b1')
   assert.match(result.proposals[0].emailBody, /MOCK/)
   assert.ok(result.proposals[0].findings.some((finding) => finding.evidence === 'metaDescription: null'))
-  assert.deepEqual(result.inspections.map((inspection) => inspection.status), ['inspected', 'failed'])
+  assert.equal(result.inspections[0].status, 'inspected')
+  assert.equal(result.inspections[0].score?.value, inspectOutput.onPageScore.value)
+  assert.equal(result.warnings.length, 0)
+  assert.match(result.answer, /\[MOCK\] Inspected 1 of 1 website/)
+})
+
+test('a website that cannot be fetched produces a clear failure, no score and no invented proposal', async () => {
+  const response = await handleAudit({
+    request: auditRequest('http://localhost:8788/api/audit', {
+      task: 'Find improvements',
+      businesses: [{ name: 'Broken Bakery', url: 'https://broken-site.com' }],
+    }),
+    env: { MOCK_MODE: 'true' },
+  }, { fetchImplementation: siteFetch })
+  const events = await readEvents(response)
+  const result = events.at(-1)
+  assert.equal(result?.type, 'result')
+  if (result?.type !== 'result') return
+  assert.equal(result.proposals.length, 0)
+  assert.equal(result.inspections[0].status, 'failed')
+  assert.equal(result.inspections[0].score, null)
   assert.ok(result.warnings.some((warning) => /Broken Bakery could not be inspected/.test(warning)))
-  assert.match(result.answer, /\[MOCK\] Inspected 1 of 2 website/)
 })
 
 test('cancelling the request stops the run and reports cancellation', async () => {

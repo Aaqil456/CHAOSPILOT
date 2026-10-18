@@ -6,15 +6,15 @@ Repository: https://github.com/Aaqil456/CHAOSPILOT (MIT)
 
 ## Project description
 
-**What it is.** ChaosPilot is a website-audit agent for freelancers and small agencies. You enter up to three businesses and their public website URLs. The agent inspects each site and drafts a personalised improvement proposal for each business. Every finding in a proposal cites the exact value it was based on (for example `metaDescription: null` or `images.missingAlt: 7`), so a claim can be checked rather than trusted.
+**What it is.** ChaosPilot is a website-audit agent for freelancers and small agencies. You enter a business and its public website URL. The agent inspects the site, gives it an on-page basics score out of 100 with a point-by-point breakdown, and drafts a personalised improvement proposal. Every finding cites the exact value it was based on (for example `metaDescription: null` or `images.missingAlt: 7`), so a claim can be checked rather than trusted. A second tab compares two websites side by side, scored the same way, with a written comparison.
 
 **Why I built it.** Cold outreach about a client's website usually ends up generic, because properly reviewing each site takes time. I wanted an agent that does the review with real evidence and hands back a draft I can edit, instead of an AI that writes confident text about a site it never opened.
 
 **How it works.**
 1. The browser sends the task and businesses to a Cloudflare Pages Function (`/api/audit`).
-2. `nvidia/Nemotron-3_5-Lightning`, served on Nebius Token Factory, decides what to do next using native function calling. It can call three tools: `inspect_website`, `inspect_page` and `save_proposal`.
+2. `nvidia/Nemotron-3_5-Lightning`, served on Nebius Token Factory, decides what to do next using native function calling. It can call `inspect_website`, `inspect_page` and `save_proposal` (and `save_comparison` in the compare workflow).
 3. The server executes those tools. It fetches the page over HTTP, extracts evidence (SEO tags, headings, calls to action, contact routes, images, links), and returns a compact summary to the model.
-4. The model reads the results, optionally opens up to two linked pages per business, and saves a proposal for each business.
+4. The server computes the score from the evidence, and the model reads the results, optionally opens up to two linked pages, and saves a proposal based on where the score lost the most points.
 5. Each step streams to the browser as it happens, with its inputs, outputs, errors and timing. Proposals can be edited, copied, or downloaded as TXT, HTML or PDF.
 
 **What makes it trustworthy.**
@@ -24,7 +24,7 @@ Repository: https://github.com/Aaqil456/CHAOSPILOT (MIT)
 - Runs have turn and tool-call limits. If the model tries to finish without saving a proposal for a site it inspected, it is reminded. Any remaining gap is shown as a warning, never filled in.
 - Nothing is ever sent to the businesses. Proposals are drafts for review.
 
-**Tested against the live model.** A three-site audit finished in about 13 seconds over 7 model turns. Running against the real model found issues the stubbed tests missed, and the project fixes all of them (see the README).
+**Tested against the live model.** A single-site audit finished in about 8 seconds over 6 model turns, and a two-site comparison in about 4 seconds over 3 turns. Running against the real model found issues the stubbed tests missed, and the project fixes all of them (see the README).
 
 **Known limits.** Sites that render everything with JavaScript return little HTML, and the UI flags this as limited evidence. There are no screenshots or real performance scores. History lives only in the browser. The model is small and occasionally misjudges a finding, which is why every finding shows its evidence.
 
@@ -35,7 +35,7 @@ All of this comes from building this project.
 **What worked well**
 - The OpenAI-compatible API meant a plain `fetch` adapter was enough. No SDK was needed.
 - Native tool calling worked with `nvidia/Nemotron-3_5-Lightning` for a multi-step loop, including recovery after a tool-argument validation error.
-- Latency was good. A full three-site audit including real website fetches took about 13 seconds.
+- Latency was good. A full single-site audit including real website fetches took about 8 seconds, and a two-site comparison about 4 seconds.
 
 **Friction and suggestions**
 1. **`tool_calls: null`.** When the model answers in plain text, the response contains `"tool_calls": null` rather than omitting the field. A strict response parser rejects this, and the live run fails on the second turn. This is worth a line in the docs or a consistent shape.

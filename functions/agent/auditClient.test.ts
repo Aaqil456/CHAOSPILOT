@@ -15,6 +15,7 @@ const events: AuditStreamEvent[] = [
     type: 'result',
     answer: 'Done',
     proposals: [{ businessId: 'b1', summary: 'Summary text', findings: [], emailSubject: 'Hi', emailBody: 'Body' }],
+    comparison: null,
     inspections: [],
     turns: 3,
     stopReason: 'final',

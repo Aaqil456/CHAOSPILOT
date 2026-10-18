@@ -9,7 +9,7 @@
     "pages:dev": "node scripts/embed-agent-markdown.mjs && wrangler pages dev dist",
     "build": "node scripts/embed-agent-markdown.mjs && tsc -b && vite build",
     "lint": "eslint .",
-    "test:agent": "node --experimental-strip-types --test functions/agent/runtime.test.ts functions/agent/nebiusModel.test.ts functions/agent/websiteInspection.test.ts functions/agent/audit.test.ts functions/agent/auditClient.test.ts",
+    "test:agent": "node --experimental-strip-types --test functions/agent/runtime.test.ts functions/agent/nebiusModel.test.ts functions/agent/websiteInspection.test.ts functions/agent/audit.test.ts functions/agent/auditClient.test.ts functions/agent/siteScore.test.ts functions/agent/compare.test.ts",
     "test": "npm run test:agent",
     "preview": "vite preview"
   },
