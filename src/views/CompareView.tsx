@@ -14,7 +14,7 @@ const sampleTask: RunRequest = {
   task: defaultTask,
   businesses: [
     { name: 'Python.org', url: 'https://www.python.org' },
-    { name: 'Berkshire Hathaway', url: 'https://www.berkshirehathaway.com' },
+    { name: 'CERN First Website', url: 'https://info.cern.ch' },
   ],
 }
 

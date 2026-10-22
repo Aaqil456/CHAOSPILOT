@@ -15,7 +15,7 @@ const defaultTask = 'Review this website and find practical improvements that wo
 
 const sampleTask = {
   task: 'Review this website and find practical improvements that would help the organisation attract and convert more visitors. Draft a short, friendly proposal.',
-  businesses: [{ name: 'Berkshire Hathaway', url: 'https://www.berkshirehathaway.com' }],
+  businesses: [{ name: 'CERN First Website', url: 'https://info.cern.ch' }],
 }
 
 let businessCounter = 0

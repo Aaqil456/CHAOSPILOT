@@ -209,3 +209,25 @@ test('HTML entities are decoded, and unknown symbol entities never leak into evi
   assert.deepEqual(evidence.callsToAction, ['≡ Menu', 'Book now'])
   assert.doesNotMatch(JSON.stringify(evidence), /&[a-z]+;/i)
 })
+
+test('a redirect without a target, or an access error, hints at bot protection', async () => {
+  for (const status of [307, 403, 429]) {
+    await assert.rejects(
+      fetchPublicPage('https://protected-site.com/', {
+        budget: new RequestBudget(),
+        fetchImplementation: async () => new Response('challenge', { status, headers: { 'content-type': 'text/html' } }),
+      }),
+      (error: unknown) => error instanceof WebsiteFetchError
+        && error.code === 'http_error'
+        && error.message.includes(`HTTP ${status}`)
+        && /blocking automated requests/.test(error.message),
+    )
+  }
+  await assert.rejects(
+    fetchPublicPage('https://broken-site.com/', {
+      budget: new RequestBudget(),
+      fetchImplementation: async () => new Response('oops', { status: 500 }),
+    }),
+    (error: unknown) => error instanceof WebsiteFetchError && !/blocking/.test(error.message),
+  )
+})

@@ -145,7 +145,12 @@ export async function fetchPublicPage(input: string, options: SafeFetchOptions):
     const contentType = response.headers.get('content-type') ?? ''
     if (!response.ok) {
       await response.body?.cancel()
-      throw new WebsiteFetchError('http_error', `The website responded with HTTP ${response.status}.`)
+      const blocking = response.status === 401 || response.status === 403 || response.status === 429
+        || response.status === 503 || (response.status >= 300 && response.status < 400)
+      throw new WebsiteFetchError(
+        'http_error',
+        `The website responded with HTTP ${response.status}.${blocking ? ' It may be blocking automated requests (bot protection).' : ''}`,
+      )
     }
     if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) {
       await response.body?.cancel()
